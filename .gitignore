@@ -1,3 +1,6 @@
+# Folder with files I wan't to keep private
+private/
+
 # History files
 .Rhistory
 .Rapp.history
