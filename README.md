@@ -18,3 +18,4 @@ Workshops on using R and modelin response styles organized at Institute of Philo
 # Warsztaty
 
 1. RS1 Przekształcanie danych w R i proste indeksy stylów odpowiedzi (poziom podstawowy). 11-12.02.2021
+   - Dzień 1.: [materiały do pobrania](https://github.com/tzoltak/workshopsIFiS/raw/main/1-data-manipulation-with-dplyr/dzien1.zip)

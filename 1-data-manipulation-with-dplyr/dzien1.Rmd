@@ -244,7 +244,7 @@ filter(dane,
        escs > mean(filter(dane, cnt == "JPN")$escs, na.rm = TRUE))
 ```
 
-### Ćwiczenia
+### Zadanie
 
 Do poniższych wywołań funkcji `filter()` dopisz odpowiednie wyrażenia opisujące, jakie obserwacje mają być wybrane:
 
@@ -259,13 +259,14 @@ filter(dane, )
 filter(dane, )
 ```
 
-Korzystając z umiejętności *przeglądania* *ramek danych* i własności konkretnych zmiennych, dowiedz się, jak *odfiltrowana* grupa badanych zostaje zapisane w *ramce danych* `daneZadanie` w wyniku wywołania poniższego kodu:
+Korzystając z umiejętności *przeglądania* *ramek danych* (i własności konkretnych zmiennych), dowiedz się tego, jaka grupa badanych zostaje zapisane w *ramce danych* `daneZadanie` w wyniku wywołania poniższego kodu:
 
 ```{r}
 daneZadanie <- filter(dane,
-                      CNR = "JOR",
+                      cnt == "JOR",
                       st87q01 %in% c(1, 2) | st87q06 %in% c(1, 2),
-                      questionid == 3)
+                      questid == 3)
+# to jest miejsce na Twoje poszukiwania
 ```
 
 # Sortowanie wierszy
@@ -297,15 +298,6 @@ slice_tail(dane, n = 10)
 slice_sample(dane, n = 10)
 # prosta próba losowa bez zwracania 1% osób spośród wszystkich badanych
 slice_sample(dane, prop = 0.01)
-```
-
-Funkcje `slice_min()` i `slice_max()` pozwalają z kolei wybrać zadaną liczbę lub odsetek obserwacji o najniższych lub najwyższych wartościach określonej zmiennej, np.:
-
-```{r}
-# 10 badanych o najwyższej wartości indeksu escs
-slice_min(dane, escs, n = 10)
-# 0,5% badanych o najmniejszych wartościach indeksu escs
-slice_min(dane, escs, prop = 0.005)
 ```
 
 # Operator `%>%`
@@ -421,7 +413,7 @@ dyscyplina <- dane %>%
 str(dyscyplina)
 head(dyscyplina)
 summary(dyscyplina)
-count(dyscyplina$st81q01)
+count(dyscyplina, st81q01)
 ```
 
 Załóżmy, że chcemy teraz wystandaryzować (tzn. przekształcić liniowo w taki sposób, aby średnia zmiennej była równa 0, a odchylenie standardowe 1) zmienne `escs` i `pv1math` w ramach tej grupy osób i zapisać wynik takich przekształceń w nowych zmiennych. Aby to zrobić, możemy wykonać kod:
