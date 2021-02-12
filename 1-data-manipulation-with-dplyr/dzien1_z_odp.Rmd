@@ -1,0 +1,442 @@
+---
+title: "RS1 Przekształcanie danych w R i proste indeksy stylów odpowiedzi - dzień 1."
+author: "Tomasz Żółtak, Artur Pokropek, Marek Muszyński"
+date: "11.02.2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+editor_options: 
+  chunk_output_type: console
+---
+
+# *Tidyverse*
+
+Tzw. [*tidyverse*](https://github.com/tidyverse/tidyverse) to grupa pakietów środowiska R ukierunkowanych głównie na przekształcanie danych, które dobrze współpracują ze sobą nawzajem i mają wspólny, spójny interfejs (co w R w ogólności nie zawsze się zdarza). Składania stosowana do wywoływania funkcji z tych pakietów jest wygodna, ale nieco specyficzna (w stosunku do funkcji z podstawowej instalacji środowiska R). Zawiera pakiety odpowiedzialne za:
+
+-   wczytywania danych:
+
+    -   *readr* - dane z plików tekstowych (CSV itp.),
+    -   *haven* - dane z plików SPSS, Staty, SASa,
+    -   *readxl* - dane z plików arkuszy kalkulacyjnych Excela;
+
+-   przetwarzanie danych:
+
+    -   *tidyr* - głównie zmiana postaci danych z *szerokiej* na *długą* lub odwrotnie,
+    -   *dplyr* - przekształcanie i analiza danych przechowywanych w formie tabelarycznej (*ramek danych*),
+    -   *forcats* - przekształcanie zmiennych *kategorialnych* (reprezentowanych w R w formie tzw. *czynników*),
+    -   *stringr* - operacje na ciągach znaków (tekstach),
+    -   *purrr* - przekształcenia list (danych przechowywanych w formie innej niż tabelaryczna, np. drzew);
+
+-   wizualizację (tworzenie wykresów):
+
+    -   *ggplot2*;
+
+-   oraz nieco innych, bardziej specjalizowanych.
+
+Charakterystyczną cechą *tidyverse* jest też wykorzystanie operatora `%>%` do tworzenia ciągów przekształceń (tzw. *pipe'ów*) wykonywanych po kolei na jednej *ramce danych*.
+
+Na tych warsztatach będziemy korzystać głównie z pakietu *dplyr*. *Ściąga* zawierające skrótowy opis jego funkcjonalności pakietu znajduje się [tu](https://github.com/rstudio/cheatsheets/blob/master/data-transformation.pdf).
+
+## *Ładowanie* pakietów
+
+Aby móc korzystać z funkcji zawartych w dodatkowym pakiecie w ramach danej sesji R, konieczne jest *załadowanie* go do aktywnego środowiska przy pomocy polecenia `library()`:
+
+```{r}
+library(dplyr)
+```
+
+# *Ramki danych*
+
+## Wczytywanie danych z plików SPSS i Staty
+
+Aby wczytać do R dane zapisane w postaci pliku SPSSa lub Staty najlepiej posłużyć się funkcjami pakietu *haven*, odpowiednio `read_sav()` lub `read_dta()`. Jako ich argument należy podać nazwę pliku. Wynik działania tych funkcji musimy przypisać do jakiegoś obiektu, podając jego nazwę (`<-` to operator przypisania, choć można też stosować w tym celu `=`):
+
+```{r}
+# musimy załadować pakiet haven do aktywnego środowiska
+library(haven)
+# zakładając, że plik z danymi jest zapisany w folderze roboczy R
+dane <- read_dta("PISA2012_some_countries_sectionD.dta")
+```
+
+Uwaga: w przypadku starszych zbiorów zawierających etykiety w języku innym niż angielski (dokładniej: zawierających znaki spoza zestawu ASCII, w szczególności polskie znaki) może wystąpić problem z kodowaniem znaków. W takim przypadku pomoże użycie w wywołaniu funkcji dodatkowego argumentu `encoding`, przy pomocy którego trzeba podać, w jakim *kodowaniu* zapisany został zbiór (dla zbiorów z polskich badań będzie to zwykle `encoding="windows-1250"`).
+
+### Wykorzystywane dane
+
+Dane, których dziś używamy, stanowią podzbiór oficjalnego zbioru wyników badania PISA 2012. Został on zawężony do:
+
+-   5 krajów (Jordania, Japonia, Polska, Szwecja, USA),
+-   zmiennych opisujących odpowiedzi na pytania z części D kwestionariusza ucznia, indeksów obliczonych na podstawie odpowiedzi na wszystkie pytania, wag i zmiennych *technicznych* (identyfikatory, wersja wypełnianego kwestionariusza itp.).
+
+### Zapis do plików SPSS lub Staty
+
+Zapis do plików SPSS lub Staty umożliwiają funkcje `write_sav()` i `write_dta()` z pakietu *haven* - jako pierwszy argument należy podać *ramkę danych*, która ma zostać zapisana, a jako drugi nazwę pliku.
+
+## Przeglądanie *ramek danych*
+
+Obiekty, w których przechowywane są w R dane tabelaryczne, nazywane są *ramkami danych* (*data frames*). Istnieje kilka sposobów, aby taki obiekt *obejrzeć*:
+
+```{r}
+# wywołuje wbudowaną w RStudio przeglądarkę zawartości obiektów
+View(dane) # widać etykiety zmiennych, ale nie widać etykiet wartości
+# wypisuje strukturę obiektu: nazwy kolumn ich typy, kilka pierwszych wartości
+str(dane)
+# kilka pierwszych wierszy
+head(dane, n = 10)
+# kilka ostatnich wierszy
+tail(dane)
+# same nazwy kolumn (zmiennych)
+names(dane)
+# statystyki poziomu wartości (ew. rozkład) dla każdej zmiennej
+summary(dane)
+# ponieważ zbiór ma tak wiele zmiennych, że całe zestawienie nie chce się
+# wyświetlić, wybierzmy tylko niektóre kolumny
+summary(dane)[, 1:10]
+```
+
+## Informacje o konkretnej zmiennej w zbiorze
+
+Aby uzyskać informacje o konkretnej zmiennej (np. sprawdzić jej etykietę), można użyć funkcji `str()` lub `summary()`, podając jako jej jako argument nazwę tej zmiennej poprzedzoną nazwą *ramki danych* i symbolem `$`, np.:
+
+```{r}
+str(dane$escs)
+summary(dane$escs)
+```
+
+Warto zwrócić uwagę, że po wpisaniu nazwy *ramki danych* i znaku dolara R podpowiada możliwe nazwy zmiennych.
+
+Jak zrobić najprostszy rozkład opisane jest niżej, w części dot. etykiet.
+
+## *Ramki danych* z *tidyverse* a klasyczne *ramki danych*
+
+Obiekty zwracane przez funkcję `read_dta()`, jak też wiele innych funkcji pakietów należących do *tidyverse*, różnią się nieco od klasycznych *ramek danych*, które występują w R. Są tą tzw. *tibbles*, w odróżnieniu od klasycznych *data frames*. Różnice te prawie nigdy nie są istotne z punktu widzenia użytkownika, jednak trzeba mieć na uwadze, że obiekty tych dwóch typów są wyświetlane w nieco inny sposób, gdy *podglądamy* ich zawartość w konsoli:
+
+```{r}
+# tibble
+head(dane[, 1:20])
+# klasyczna data frame
+head(as.data.frame(dane[, 1:20]))
+```
+
+W dalszej części warsztatu nie będziemy odróżniać *tibbles* od klasycznych *ramek danych*.
+
+## Etykiety w R
+
+W odróżnieniu od SPSSa czy Staty R w bardzo ograniczonym zakresie wspiera wykorzystanie w zbiorach danych etykiet zmiennych, a tym bardziej etykiet wartości.
+
+Co prawda funkcje pakietu *haven* wczytują ze zbioru etykiety zmiennych i wartości:
+
+```{r}
+# przyjrzyjmy się strukturze zmiennej `st77q1` - wyraźnie ma etykiety
+str(dane$st77q01)
+```
+
+Jednak większość funkcji środowiska R nie będzie potrafiła tych etykiet wykorzystać przy wyświetlaniu wyników. Pewnym wyjątkiem są tu funkcje z *tidyverse*, ale i w ich przypadku wsparcie dla etykiet jest ograniczone. Np. chcąc zobaczyć prosty rozkład liczebności:
+
+```{r}
+# podejście z "podstawowego R" - żadnych etykiet
+table(dane$st77q01)
+# funkcja z pakietu dplyr - widać etykiety,
+# ale w zestawieniu nie ma wartości, dla których są zdefiniowane etykiety, ale
+# nie wystąpiły one w danych
+count(dane, st77q01)
+```
+
+Łatwo jest też skasować sobie etykiety zmiennych (oraz wartości), dokonując przekształceń zmiennych w *ramce danych*.
+
+Jeśli wiemy, że daną zmienną będziemy konsekwentnie analizować jako *kategorialną*, to użyteczne będzie skonwertowanie jej na tzw. *czynnik* (*factor*) - specjalny rodzaj zmiennych, które służą w R do reprezentowania tego typu danych. Na zmiennej skonwertowanej na *czynnik*:
+
+-   nie będzie można już jednak wykonać operacji arytmetycznych,
+-   operacje przyrównania trzeba będzie dokonywać tak, jakby była zmienną tekstową (tj. jej wartością była wartość etykiety).
+
+Do konwersji na *czynnik* należy wykorzystać funkcję `as_factor()` z pakietu *haven* (uwaga! **nie mylić** z funkcją `as.factor()`).
+
+```{r}
+table(as_factor(dane$st77q01))
+# operacje arytmetyczne - możliwe na zmiennej etykietowanej, ale nie na czynniku
+mean(dane$st77q01, na.rm = TRUE)
+mean(as_factor(dane$st77q01), na.rm = TRUE)
+```
+
+Ponieważ przy liczeniu prostych indeksów opisujących style odpowiedzi często operuje się na wartościach liczbowych zmiennych, **na potrzeby dalszej części warsztatów nie będziemy konwertować zmiennych we wczytanym zbiorze na *czynniki***.
+
+## Braki danych w R
+
+W R nic takiego jak *braki danych użytkownika* - wartości liczbowe kodujące np. odmowę odpowiedzi, czy stwierdzenie *trudno powiedzieć* będą traktowane w analizach tak samo, jak wszystkie inne wartości, chyba że zostaną wcześniej przekodowane na *systemowe braki danych*, których odpowiednikiem w R jest wartość `NA`.
+
+Nieco więcej informacji nt. sposobu traktowania etykiet i braków danych użytkownika przez R można znaleźć w [materiale będącym częścią dokumentacji pakietu *haven*](https://haven.tidyverse.org/articles/semantics.html).
+
+# Wybieranie (odfiltrowywanie) obserwacji
+
+Do wyboru podzbioru obserwacji służy w pakiecie *dplyr* funkcja `filter()`:
+
+-   jako pierwszy argument przyjmuje *ramkę danych*, która ma zostać *odfiltrowana*,
+-   dalsze argumenty to wyrażenia opisujące, jakie obserwacje mają pozostać w *odfiltrowanym* zbiorze - jeśli takich wyrażeń jest kilka to zostaną połączone ze sobą logiczną koniunkcją (*i*).
+
+Np. załóżmy, że chcemy przyjrzeć się respondentom, którzy wypełniali wersję *A* kwestionariusza - są oni opisani wartością 1 zmiennej `questid`:
+
+```{r}
+View(filter(dane, questid == 1))
+```
+
+Czy dane dot. tych osób nie są dziwne?
+
+## Schemat badawczy z planowymi brakami danych
+
+Wybrani respondenci mają same braki danych w odpowiedziach na pytania z bloku D kwestionariusza. Wynika to ze stosowania w badaniu PISA tzw. schematu pomiaru z planowymi brakami danych - poszczególny respondent odpowiada wtedy tylko na wybrany zestaw pytań. Jeśli celem badania jest dokonywanie porównań między dużymi grupami (np. między krajami), to pozwala to zebrać informacje o szerszym zakresie cech, przy utrzymaniu rozsądnej długości kwestionariusza. Wersja *A* kwestionariusza ucznia PISA 2012 nie zawierała właśnie pytań z sekcji D.
+
+## Konieczność przypisania wyników *filtrowania* do obiektu
+
+W związku z tym rozsądne będzie usunięcie ze zbioru rekordów opisujących osoby, które wypełniły wersję *A* kwestionariusza - w żaden sposób nie przydadzą się one w dalszych analizach (w ramach tego warsztatu). Aby to zrobić trzeba **przypisać efekt działania funkcji `filter()` do obiektu** (podobnie jak robiliśmy to wczytując dane):
+
+```{r}
+dane <- filter(dane, questid != 1)
+# obiekt dane nie zawiera już osób, które wypełniły wersję A
+```
+
+## Konstruowanie wyrażeń logicznych
+
+Konstruując w R wyrażenia logiczne można używać następujących operatorów:
+
+-   `==` jest równe;
+-   `!=` nie jest równe;
+-   `>`, `<` większe niż, mniejsze niż;
+-   `>=`, `<=` większe lub równe niż, mniejsze lub równe niż;
+-   `&` koniunkcja (*i*);
+-   `|` alternatywa (*lub*);
+-   `%in%` należy do zbioru (przyjmuje jedną z wartości występujących w wektorze podanym po prawej stronie operatora `%in%`);
+-   `(`, `)` nawiasów można użyć w celu modyfikacji domyślnej kolejności wykonywania operacji logicznych w złożonych wyrażeniach,
+-   można też używać funkcji arytmetycznych lub obliczających parametry statystyczne.
+
+Przykłady:
+
+```{r}
+# tylko dane dot. Polski
+filter(dane, cnt == "POL")
+# tylko dane z Polski lub Japonii
+filter(dane, cnt %in% c("POL", "JPN"))
+# to samo zapisane inaczej
+filter(dane, cnt == "POL" | cnt == "JPN")
+# tylko deklarujący, że nauczyciel matematyki okazywał im zainteresowanie
+# na wszystkich lub na większości lekcji
+filter(dane, st77q01 %in% c(1, 2))
+# to samo inaczej
+filter(dane, st77q01 < 2)
+```
+
+Nieco bardziej złożone przykłady:
+
+```{r}
+# tylko osoby o wartości zmiennej escs większej, niż średnia w całym zbiorze
+filter(dane, escs > mean(escs, na.rm = TRUE))
+```
+
+Bardzo złożony przykład:
+
+```{r}
+# tylko respondenci z Polski, których wartość indeksu escs jest wyższa, niż
+# średnia wartość indeksu escs wśród badanych Japończyków
+filter(dane,
+       cnt == "POL",
+       escs > mean(filter(dane, cnt == "JPN")$escs, na.rm = TRUE))
+```
+
+### Zadanie
+
+Do poniższych wywołań funkcji `filter()` dopisz odpowiednie wyrażenia opisujące, jakie obserwacje mają być wybrane:
+
+```{r}
+# uczniowie, którzy w pytaniu st89q02 wyrazili opinię, że nauka w szkole nie
+# pomaga zdobyć pracy (tj. *nie zgadzają się" lub "zdecydowanie się nie zgadzają")
+filter(dane, st89q02 %in% c(3, 4))
+# jw., ale dodatkowo mają to być tylko uczniowie z USA
+filter(dane, st89q02 %in% c(3, 4), cnt == "USA")
+# uczniowie, których umiejętności matematyczne, mierzone zmienną pv1math,
+# są wyższe niż 500 punktów
+filter(dane, pv1math > 500)
+```
+
+Korzystając z umiejętności *przeglądania* *ramek danych* (i własności konkretnych zmiennych), dowiedz się tego, jaka grupa badanych zostaje zapisane w *ramce danych* `daneZadanie` w wyniku wywołania poniższego kodu:
+
+```{r}
+daneZadanie <- filter(dane,
+                      cnt == "JOR",
+                      st87q01 %in% c(1, 2) | st87q06 %in% c(1, 2),
+                      questid == 3)
+# to jest miejsce na Twoje poszukiwania
+str(dane$st87q01)
+str(dane$st87q06)
+```
+
+# Sortowanie wierszy
+
+Do sortowania wierszy w ramach pakietu *dplyr* służy funkcja `arrange()`. Jako pierwszy argument przyjmuje ona *ramkę danych* a jako kolejne nazwy zmiennych, po których ma ona zostać posortowana. Jeśli chcemy, aby sortowanie po danej zmiennej było malejące, jej nazwę należy otoczyć wywołaniem funkcji `desc()`. Np. wywołanie:
+
+```{r}
+dane <- arrange(dane, cnt, desc(pv1math))
+```
+
+posortowało używany przez nas zbiór danych rosnąco wg kodów krajów, a w ramach krajów malejąco wg oszacowania umiejętności matematycznych zapisanych w zmiennej `pv1math` (i tak posortowany obiekt nadpisał *ramkę danych* `dane`).
+
+# Wybór wierszy przy pomocy funkcji `slice()`
+
+Funkcja `slice()` i jej warianty pozwala *odfiltrować* wiersze nie na podstawie wartości zmiennych, ale pozycji tych wierszy w zbiorze. Przydaje się to czasem przy agregacji danych, a także do *debugowania* swojego kodu, kiedy okazuje się, że coś w nim nie działa. Ponadto funkcja `slice_sample()` pozwala w łatwy sposób dobrać próbę losową obserwacji z danej *ramki danych*. Np.:
+
+```{r}
+# wybiera wiersze 1, 10 i 101
+slice(dane, c(1, 10, 101))
+# wybiera 10 pierwszych wierszy
+slice(dane, 1:10)
+# to samo przy pomocy funkcji slice_head
+slice_head(dane, n = 10)
+# 1% wierszy z początku *ramki danych*
+slice_head(dane, prop = 0.01)
+# 10 ostatnich wierszy
+slice_tail(dane, n = 10)
+# prosta próba losowa bez zwracania 100 osób spośród wszystkich badanych
+slice_sample(dane, n = 10)
+# prosta próba losowa bez zwracania 1% osób spośród wszystkich badanych
+slice_sample(dane, prop = 0.01)
+```
+
+# Operator `%>%`
+
+Często chcemy wykonać na danych ciąg przekształceń. Np. załóżmy, że chcemy wybrać ze zbioru danych 100 obserwacji o najwyższych wartościach indeksu *ESCS* (opisującego status społeczno-ekonomiczny rodziny ucznia). W tym celu musimy:
+
+1.  posortować zbiór malejąco ze względu na wartość zmiennej `escs`;
+2.  wybrać 100 pierwszych obserwacji.
+
+Wynik każdej z tych operacji musimy przypisać do obiektu (zwykle nadpisując ten sam obiekt w kolejnych krokach):
+
+```{r}
+bardzoWysokiStatus <- arrange(dane, desc(escs))
+bardzoWysokiStatus <- slice_head(bardzoWysokiStatus, n = 100)
+# zobaczmy, jakie są w tej grupie wartości indeksu escs
+summary(bardzoWysokiStatus$escs)
+```
+
+Aby oszczędzić sobie pisania nazwy *ramki danych* dwukrotnie w każdym wierszu, stosuje się operator `%>%` (tzw. operator *pipe*): efekt wykonania kodu, który znajduje się po jego lewej stronie przekazywany jest jako pierwszy argument do funkcji, która stoi po jego prawej stronie $f(X) %in% g(y) = g(f(x), y)$. Z wykorzystaniem tego operatora możemy powyższy kod zapisać jako:
+
+```{r}
+bardzoWysokiStatus2 <- dane %>%
+  arrange(desc(escs)) %>%
+  slice_head(n = 100)
+# sprawdźmy, czy wybrało się to samo (na pierwszy rzut oka)
+summary(bardzoWysokiStatus2$escs)
+```
+
+### Zadanie
+
+Wydaje się, że ten sam efekt, co przed chwilą, można by osiągnąć sortując zbiór **rosnąco** według zmiennej `escs`, a następnie wybierając 100 **ostatnich** wierszy, jednak okazuje się, że takie działanie daje inny wynik:
+
+```{r}
+bardzoWysokiStatus3 <- dane %>%
+  filter(!is.na(escs)) %>%
+  arrange(escs) %>%
+  slice_tail(n = 100)
+summary(bardzoWysokiStatus3$escs)
+```
+
+1.  Dlaczego tak się dzieje?
+
+2.  Zmodyfikuj kod powyżej dodając do sekwencji przekształceń wywołanie funkcji `filter()`, które pozwoli uzyskać oczekiwany wynik (tj. taki sam, jak w stosowanym wcześniej podejściu).
+
+    -   Aby sprawdzić, dla jakich obserwacji wartość zmiennej `escs` nie jest brakiem danych, należy użyć wyrażenia `!is.na(escs)`.
+
+# Wybieranie kolumn ramki danych
+
+Funkcja `select()` służy do wybrania ze zbioru tylko niektórych zmiennych (kolumn) lub zmiany ich kolejności. Jako pierwszy argument przyjmuje *ramkę danych*, a następne opisują, jakie zmienne mają zostać wybrane. Istnieje wiele wariantów składni tych argumentów, np.:
+
+```{r}
+# podanie nazw zmiennych, które mają zostać wybrane
+select(dane, cnt, schoolid, stidstd, age, grade, escs, pv1math)
+# podanie nazw zmiennych, które mają zostać usunięte, poprzedzonych `-`
+select(dane, -cnt)
+# użycie konwencji od-do, definiowanej operatorem `:`
+select(dane, st80q01:st80q11)
+# różnie konwencje można ze sobą łączyć
+select(dane,
+       cnt, schoolid, stidstd, age, grade, escs, pv1math,
+       st80q01:st80q11, -(st80q05:st80q08))
+```
+
+Istnieją jeszcze inne sposoby wskazywania zmiennych, które mają zostać wybrane - p. zadanie poniżej.
+
+### Zadanie
+
+Analizując, jakie kolumny zawierają zwrócone ramki danych (oraz nazwy użytych funkcji) opisz, w jakiś sposób pozwalają wybrać kolumny poszczególne warianty składni poniżej:
+
+```{r}
+# łatwe
+select(dane, starts_with("st79"))
+select(dane, ends_with("math"))
+select(dane, contains("math"))
+# trudniejsze
+select(dane, num_range("st80q", 1:9, width = 2))
+select(dane, where(is.factor))
+# to jest trudne!
+select(dane, matches("^st7[0-9]q0[123]$"))
+```
+
+### Zadanie
+
+Napisz kod, który wykona następujące czynności:
+
+1.  przypisze do nowej *ramki danych* o nazwie `wsparcieNauczyciela` zmienne: `cnt`, `schoolid`, `stidstd`, `st77q01`, `st77q02`, `st77q04`, `st77q05`, `st77q06`, `escs`, `pv1math`;
+2.  usunie z tej *ramki danych* obserwacje, dla których indeks `escs` jest brakiem danych;
+3.  posortuje wiersze tej *ramki danych* ze względu na wyniki pomiaru umiejętności matematycznych zapisane w zmiennej `pv1math`.
+
+```{r}
+# miejsce na Twój kod
+wsparcieNauczyciela <- select(dane, cnt,schoolid, stidstd, st77q01:st77q06,
+                              escs, pv1math)
+wsparcieNauczyciela <- filter(wsparcieNauczyciela, !is.na(escs))
+wsparcieNauczyciela <- arrange(wsparcieNauczyciela, pv1math)
+```
+
+Jeśli powyższy kod zapisałeś/aś bez wykorzystania operatora `%>%`, zmodyfikuj go poniżej tak, aby był to ciąg przekształceń połączonych operatorem `%>%`.
+
+```{r}
+# miejsce na Twój kod
+wsparcieNauczyciela <- dane %>%
+  # wywołanie filter() mogłoby też równie dobrze znaleźć się w tym miejscu
+  select(cnt,schoolid, stidstd, st77q01:st77q06, escs, pv1math) %>%
+  filter(!is.na(escs)) %>%
+  arrange(pv1math)
+```
+
+# Przekształcanie zmiennych w *ramce danych* (i tworzenie nowych) - część 1.
+
+Do przekształcania istniejących i tworzenia nowych zmiennych w *ramce danych* służy funkcja `mutate()` pakietu *dplyr*. Jako pierwszy argument przyjmuje ona *ramkę danych*, a kolejne argumenty to wyrażenia opisują przekształcenia zmiennych.
+
+## Podstawowa składnia
+
+Najprostszy sposób wykorzystania funkcji `mutate()` to opisanie przekształceń w formie: `nazwaZmiennej = przeksztalcenie(istniejacaZmienna)` - jeśli zmienna, której nazwa znajduje się po lewej stronie operatora `=` już istnieje w tej ramce danych, jej wartości zostaną nadpisane, jeśli nie, na końcu *ramki danych* zostanie utworzona nowa zmienne o tej nazwie.
+
+Aby uprościć sobie obserwowanie, jak działa funkcja `mutate()`, skorzystajmy z *ramki danych* zawierającej odpowiedzi na pytania powiązane z tylko jedną skalą opisującą ocenę dyscypliny panującej w klasie (lub jej brak) oraz zmienne `escs` i `pv1math`, obejmującą tylko uczniów z Polski:
+
+```{r}
+dyscyplina <- dane %>%
+  select(cnt, schoolid, stidstd, starts_with("st81"), escs, pv1math) %>%
+  filter(cnt == "POL")
+str(dyscyplina)
+head(dyscyplina)
+summary(dyscyplina)
+count(dyscyplina, st81q01)
+```
+
+Załóżmy, że chcemy teraz wystandaryzować (tzn. przekształcić liniowo w taki sposób, aby średnia zmiennej była równa 0, a odchylenie standardowe 1) zmienne `escs` i `pv1math` w ramach tej grupy osób i zapisać wynik takich przekształceń w nowych zmiennych. Aby to zrobić, możemy wykonać kod:
+
+```{r}
+dyscyplina <- dyscyplina %>%
+  mutate(escs_std = (escs - mean(escs, na.rm = TRUE)) / sd(escs, na.rm = TRUE),
+         # można też użyć funkcji scale()
+         pv1math_std = as.vector(scale(pv1math)))
+head(dyscyplina)
+# sprawdźmy wartości statystyk
+mean(dyscyplina$escs_std, na.rm = TRUE)
+sd(dyscyplina$escs_std, na.rm = TRUE)
+mean(dyscyplina$pv1math_std, na.rm = TRUE)
+sd(dyscyplina$pv1math_std, na.rm = TRUE)
+```

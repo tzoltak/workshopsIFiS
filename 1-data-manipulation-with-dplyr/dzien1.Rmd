@@ -7,6 +7,8 @@ output:
     toc: true
     toc_float: true
     number_sections: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 # *Tidyverse*
@@ -220,7 +222,7 @@ filter(dane, cnt == "POL" | cnt == "JPN")
 # na wszystkich lub na większości lekcji
 filter(dane, st77q01 %in% c(1, 2))
 # to samo inaczej
-filter(dane, st77q01 <= 2)
+filter(dane, st77q01 < 2)
 ```
 
 Nieco bardziej złożone przykłady:
@@ -228,10 +230,6 @@ Nieco bardziej złożone przykłady:
 ```{r}
 # tylko osoby o wartości zmiennej escs większej, niż średnia w całym zbiorze
 filter(dane, escs > mean(escs, na.rm = TRUE))
-# tylko osoby, które odpowiadając na pytania st77q01, st77q02, st77q04
-# co najmniej dwa razy wybrały odpowiedź "na każdej lekcji" lub "na większości lekcji"
-filter(dane, sum(st77q01 %in% c(1, 2), st77q02 %in% c(1, 2),
-                 st77q04 %in% c(1, 2)) >= 2)
 ```
 
 Bardzo złożony przykład:
@@ -371,9 +369,9 @@ Analizując, jakie kolumny zawierają zwrócone ramki danych (oraz nazwy użytyc
 select(dane, starts_with("st79"))
 select(dane, ends_with("math"))
 select(dane, contains("math"))
-select(dane, num_range("st80q", 1:9, width = 2))
 # trudniejsze
-select(dane, where(is.character))
+select(dane, num_range("st80q", 1:9, width = 2))
+select(dane, where(is.factor))
 # to jest trudne!
 select(dane, matches("^st7[0-9]q0[123]$"))
 ```
@@ -390,13 +388,13 @@ Napisz kod, który wykona następujące czynności:
 # miejsce na Twój kod
 ```
 
-Jeśli powyższy kod zapisałeś/as bez wykorzystania operatora `%>%`, zmodyfikuj go poniżej tak, aby był to ciąg przekształceń połączonych operatorem `%>%`.
+Jeśli powyższy kod zapisałeś/aś bez wykorzystania operatora `%>%`, zmodyfikuj go poniżej tak, aby był to ciąg przekształceń połączonych operatorem `%>%`.
 
 ```{r}
 # miejsce na Twój kod
 ```
 
-# Przekształcanie zmiennych w *ramce danych* (i tworzenie nowych)
+# Przekształcanie zmiennych w *ramce danych* (i tworzenie nowych) - część 1.
 
 Do przekształcania istniejących i tworzenia nowych zmiennych w *ramce danych* służy funkcja `mutate()` pakietu *dplyr*. Jako pierwszy argument przyjmuje ona *ramkę danych*, a kolejne argumenty to wyrażenia opisują przekształcenia zmiennych.
 
@@ -420,7 +418,7 @@ Załóżmy, że chcemy teraz wystandaryzować (tzn. przekształcić liniowo w t
 
 ```{r}
 dyscyplina <- dyscyplina %>%
-  mutate(escs_std = (escs - mean(escs, na.rm = TRUE))/ sd(escs, na.rm = TRUE),
+  mutate(escs_std = (escs - mean(escs, na.rm = TRUE)) / sd(escs, na.rm = TRUE),
          # można też użyć funkcji scale()
          pv1math_std = as.vector(scale(pv1math)))
 head(dyscyplina)
@@ -429,222 +427,4 @@ mean(dyscyplina$escs_std, na.rm = TRUE)
 sd(dyscyplina$escs_std, na.rm = TRUE)
 mean(dyscyplina$pv1math_std, na.rm = TRUE)
 sd(dyscyplina$pv1math_std, na.rm = TRUE)
-```
-
-## Funkcja `if_else()`
-
-Przekształcenia zmiennych *kategorialnych* - nawet jeśli ich wartości są reprezentowane przez liczby - zwykle mają postać *warunków logicznych*. Załóżmy np., że chcemy utworzyć w *ramce danych* `dyscyplina` zdychotomizowane zmienne opisujące odpowiedzi na pytania ST81 i że dychotomizacja będzie przebiegać w ten sposób, że jeśli uczeń wybrał odpowiedź *nigdy lub prawie nigdy* (wartość 4; jest to odpowiedź wskazująca na wysoki poziom dyscypliny), to zakodujemy to wartością 1, a wybór innej odpowiedzi zakodujemy wartością 0. Możemy do tego użyć funkcji `if_else()`: jako pierwszy argument przyjmuje ona wyrażenie zwracające wartość logiczną, drugi argument wskazuje wartość, która ma zostać zwrócona, jeśli wyrażenie to przyjmie `TRUE`, a trzeci argument wartość, która ma zostać zwrócona, jeśli wyrażenie przyjmie wartość `FALSE`):
-
-```{r}
-dyscyplina <- dyscyplina %>%
-  mutate(st81q01_dich = if_else(st81q01 == 4, 1, 0),
-         st81q02_dich = if_else(st81q02 == 4, 1, 0),
-         st81q03_dich = if_else(st81q03 == 4, 1, 0),
-         st81q04_dich = if_else(st81q04 == 4, 1, 0),
-         st81q05_dich = if_else(st81q05 == 4, 1, 0))
-# będzie lepiej widać, jeśli pominiemy inne zmienne
-head(select(dyscyplina, starts_with("st81")))
-# możemy też porównać rozkłady - tu dla pierwszego pytania
-count(dyscyplina, st81q01)
-count(dyscyplina, st81q01_dich)
-```
-
-## Funkcja `case_when()`
-
-Często przekształcenia, które chcemy wykonać nie dają się opisać w formie pojedynczego warunku logicznego, lecz wymagają rozpatrzenia sekwencji takich warunków. W takim przypadku możemy użyć funkcji `case_when()`. Przyjrzyjmy się skali nastawienia do szkoły:
-
-```{r}
-nastawienie <- dane %>%
-  select(cnt, schoolid, stidstd, starts_with("st88"))
-str(nastawienie)
-head(nastawienie)
-count(nastawienie, st88q01)
-```
-
-Jeśli przyjąć, że chcemy mierzyć pozytywne nastawienie do szkoły (poczucie sensu uczenia się w szkole), to dwa pierwsze pytania tej skali będą *odwrócone* - wyrażenie zgody z wyrażonymi w nich stwierdzeniami wskazuje właśnie na nastawienie negatywne. W związku z tym możemy chcieć przekodować odpowiedzi na te pytania tak, aby *zmienić kierunek* skali ich odpowiedzi (wyrażonej liczbami), tzn. zamienić 4 na 1, 3 na 2, 2 na 3 i 1 na 4. Warunki takie zapisuje się jako kolejne argument w wywołaniu funkcji `case_when()` w formie: `zmienna == obecna_wartość ~ nowa_wartość` (w ogólności po lewej stronie znaku `~` może znaleźć się dowolne wyrażenie zwracające wartość logiczną - jeśli przyjmie ono wartość `TRUE`, to danej obserwacji zostanie przypisana wartość podana po prawej stronie znaku `~`):
-
-```{r}
-nastawienie <- nastawienie %>%
-  mutate(st88q01_odwr = case_when(st88q01 == 4 ~ 1,
-                                  st88q01 == 3 ~ 2,
-                                  st88q01 == 2 ~ 3,
-                                  st88q01 == 1 ~ 4),
-         st88q02_odwr = case_when(st88q02 == 4 ~ 1,
-                                  st88q02 == 3 ~ 2,
-                                  st88q02 == 2 ~ 3,
-                                  st88q02 == 1 ~ 4))
-head(nastawienie)
-# możemy też porównać rozkłady - tu dla pierwszego pytania
-count(nastawienie, st88q01)
-# to nie jest już zmienna etykietowana!
-count(nastawienie, st88q01_odwr)
-```
-
-Dla ścisłości należy jeszcze dodać, że:
-
--   jeśli dla jakiejś obserwacji pewien warunek przyjął wartość `TRUE`, to zostanie jej przypisana powiązana z tym warunkiem wartość i **dalsze warunki nie będą już dla tej obserwacji sprawdzane**;
--   jeśli żaden z warunków podanych w wywołaniu `case_when()` nie przyjął dla danej obserwacji wartości `TRUE`, to zostanie jej przypisany brak danych (`NA`).
-
-### Zadanie
-
-W *ramce danych* `porzadek` wybrane zostały odpowiedzi na pytania dot. oceny sposobu organizacji pracy klasy przez nauczyciela:
-
-```{r}
-porzadek <- dane %>%
-  select(cnt, schoolid, stidstd, starts_with("st85"))
-str(porzadek)
-head(porzadek)
-count(porzadek, st85q01)
-```
-
-Przy pomocy funkcji `mutate` przekoduj odpowiedzi na pytania należące do tej skali w taki sposób, aby odpowiedzi wskazujące na pozytywną ocenę sposobu organizacji pracy przez nauczyciela otrzymały wartość 1 (bez względu na *nasilenie* tej oceny), a odpowiedzi wskazujące na negatywną ocenę otrzymały wartość 0 (bez względu na *nasilenie* tej oceny). Weź pod uwagę, że pytanie `st85q04` jest *odwrócone*.
-
-```{r}
-porzadek <- porzadek %>%
-  mutate(
-    # to jest miejsce na Twój kod
-  )
-```
-
-## To samo przekształcenie na wielu zmiennych
-
-Jeśli chcemy wykonać to samo przekształcenie na wielu zmiennych (jak w przykładach z dychotomizacją i *odwróceniem* pytań powyżej), pisanie niemal identycznego fragmentu kodu dla każdej zmiennej jest uciążliwe (i podatne na błędy). Na szczęście pakiet *dplyr* daje nam możliwość opisania, że to samo przekształcenie ma być zastosowane do wielu zmiennych, wymaga to jednak opisania tego przekształcenia w sposób, który jest nieco bardziej *abstrakcyjny*. W tym celu jako argument `mutate()` podaje się wywołanie funkcji `across()` - pierwszy argument `across()` wskazuje, na jakich zmiennych ma zostać wykonane przekształcenie, drugi, jakie przekształcenie ma zostać wykonane.
-
-Przykładowo wykonanie dychotomizacji wszystkich 5 zmiennych opisujących odpowiedzi na pytania dot. dyscypliny z wykorzystaniem funkcji `across()` wygląda tak:
-
-```{r}
-dyscyplina <- dyscyplina %>%
-  select(-ends_with("_dich")) %>% # usuwamy zmienne utworzone wcześniej
-  mutate(across(starts_with("st81"),
-                list("dich" = ~if_else(. == 4, 1, 0))))
-```
-
-Przyjrzyjmy się szczegółom tego wywołania:
-
--   przed wywołaniem `across()` **nie** stawiamy nazwy ze znakiem `=` - nie miałoby to sensu, bo nie chcemy utworzyć jednej nowej zmiennej, lecz wiele;
-
--   pierwszy argument `across()` specyfikuje się analogicznie, jak argumenty funkcji `select()`;
-
-    -   zachodzi jednak jedna ważna różnica - w wywołaniu `select()` można było podać wiele argumentów opisujących kolumny, a dla `across()` musi to być tylko jeden argument; można jednak zebrać kilka wyrażeń opisujących, jakie kolumny mają zostać wybrane, otaczając je wywołaniem `c()`, np.
-
-        -   `across(c(st81q01, st81q02, st81q03, st81q04, st81q04), )`,
-        -   `across(c(starts_with("st81"), -ends_with("_dich")), )`;
-
--   drugi argument składa się z wywołania funkcji `list()` w ramach której umieszczony jest argument postaci `"sufiks_nazwy_zmiennej" = specyfikacja_przekształcenia`:
-
-    -   podanie `"dich"` po lewej stronie znaku `=` oznacza, że nowo tworzone zmienne mają otrzymać nazwy składające się z nazwy przekształcanej zmiennej, do której zostanie *doklejony* znak "\_" oraz "dich";
-
-    -   specyfikację przekształcenia najprościej przygotować:
-
-        -   pisząc wzór przekształcenia dla jakiejś konkretnej zmiennej, np.: `st81q01_dich = if_else(st81q01 == 4, 1, 0)`,
-
-        -   usuwając to, co w napisanym wzorze znajduje się po lewej stronie znaku `=`, a ten znak zastępując `~`: `~if_else(st81q01 == 4, 1, 0)`,
-
-        -   nazwę zmiennej, która ma być przekształcana zastąpić znakiem `.`: `~if_else(. == 4, 1, 0)`
-
-            -   można powiedzieć, że `.` jest tzw. *placeholderem* na nazwę konkretnej zmiennej, która zostanie podstawiona do przekształcenia.
-
-Gdybyśmy chcieli nie tworzyć nowych zmiennych, ale nadpisać już istniejące, kod byłby prostszy:
-
-```{r}
-# tylko poglądowo - nie przypisujemy wyniku działania do żadnego obiektu
-dyscyplina %>%
-  select(-ends_with("_dich")) %>% # usuwamy zmienne utworzone wcześniej
-  mutate(across(starts_with("st81"),
-                ~if_else(. == 4, 1, 0)))
-```
-
-### Zadanie
-
-Spróbuj opisać przy pomocy funkcji `across()` przekształcenie *odwrócenia* skali odpowiedzi pytań opisanych zmiennymi `st88q01` i `st88q02` w *ramce danych* `nastawienie`. Symbol `.` może wystąpić w specyfikacji przekształcenia wielokrotnie (po prostu należy go umieścić wszędzie tam, gdzie powinna zostać podstawiona nazwa przekształcanej zmiennej).
-
-```{r}
-nastawienie <- dane %>%
-  select(cnt, schoolid, stidstd, starts_with("st88")) %>%
-  mutate(across(,
-                ))
-```
-
-## Obliczenie zmiennej z wykorzystaniem wielu zmiennych
-
-Zajmując się skalami złożonymi z wielu pytań często chcemy wykonać operację przekształcenia danych, która wymaga użycia informacji z wielu różnych zmiennych dla tej samej osoby - np. sumowanie zmiennych opisujących odpowiedzi na poszczególne pytania, aby uzyskać (*surowy*) wynik łączny. Można to oczywiście zrobić *na piechotę*, ale jest to uciążliwe (zwłaszcza jeśli skala jest dłuższa):
-
-```{r}
-dyscyplina <- dyscyplina %>%
-  mutate(st81_suma = st81q01 + st81q02 + st81q03 + st81q04 + st81q05,
-         # w dalszych przekształceniach możemy użyć zmiennej utworzonej we
-         # wcześniejszym przekształceniu w ramach tego samego wywołania mutate()
-         st81_srednia = st81_suma / 5)
-summary(dyscyplina)
-```
-
-W związku z tym wygodniej jest użyć jednego z dwóch alternatywnych podejść.
-
-### Funkcje działające na macierzach
-
-Niektóre funkcje R działają na macierzach, czyli, z naszego punktu widzenia, wielu kolumnach *ramki danych* jednocześnie (co do zasady powinny być to kolumny tego samego typu). Np. funkcje `rowSums()` i `rowMeans()` pozwalają obliczyć odpowiednio sumy i średnie w (całych) wierszach przekazanych do nich macierzy:
-
-```{r}
-st81suma <- dyscyplina %>%
-  select(starts_with("st81q"), -ends_with("_dich")) %>%
-  rowSums()
-# otrzymaliśmy wektor
-str(st81suma)
-head(st81suma)
-# którego wartości odpowiadają tym obliczonym wcześniej w ramach ramki danych
-# `dyscyplina`
-head(dyscyplina$st81_suma)
-```
-
-Jednak w ten sposób otrzymujemy oddzielny obiekt - wektor wartości, który znajduje się poza *ramką danych*, na podstawie której został obliczony.
-
-Aby użyć takiej funkcji w ramach wywołania `mutate()` konieczne jest przekazanie jej danych w formie pojedynczego obiektu zawierającego podzbiór kolumn przetwarzanej *ramki danych*. W tym celu:
-
--   w ramach wywołania `mutate()` przypisujemy wynik działania funkcji działającej na macierzy tak, jak zrobilibyśmy to działając poza `mutate()` (tak, jak zrobiliśmy to przed chwilą);
--   w miejscu, w którym w przygotowanym fragmencie kodu występowała nazwa *ramki danych*, z której wybieramy zmienne należy zastąpić wywołaniem funkcji `cur_data()`:
-
-```{r}
-dyscyplina <- dyscyplina %>%
-  mutate(st81_suma2 = rowSums(cur_data() %>% 
-                                select(starts_with("st81q"),
-                                       -ends_with("_dich"))),
-         st81_srednia2 = rowMeans(cur_data() %>% 
-                                select(starts_with("st81q"),
-                                       -ends_with("_dich"))))
-# możemy sprawdzić, że policzyło się tak samo, jak wcześniej "na piechotę"
-summary(dyscyplina)
-head(select(dyscyplina, contains("suma"), contains("srednia")))
-```
-
-### Użycie funkcji `rowwise()` i `c_across()`
-
-Możliwe jest też inne podejście:
-
-1.  pogrupowanie *ramki danych* z wykorzystaniem funkcji `rowwise()` - na takiej *ramce danych* każda operacja przekształcenia danych będzie wykonywana oddzielnie na każdym z wierszy,
-
-2.  użycie do obliczenia zmiennych funkcji działających na wektorach, takich jak `sum()` czy `mean()` (itp.):
-
-    -   w miejscu, gdzie zwykle w wywołaniu takiej funkcji umieszcza się nazwę zmiennej (wektora), dla której ma zostać obliczona statystyka, trzeba umieścić wywołanie funkcji `c_across()`, a w nim wyspecyfikować, które kolumny mają zostać uwzględnione w obliczeniach - robi się to w ten sam sposób, co podając pierwszy argument omawianej wcześniej funkcji `across()`.
-
-```{r}
-dyscyplina <- dyscyplina %>%
-  rowwise() %>%
-  mutate(st81_suma3 = sum(c_across(c(starts_with("st81q"),
-                                     -ends_with("_dich")))),
-         st81_srednia3 = mean(c_across(c(starts_with("st81q"),
-                                         -ends_with("_dich")))),
-         # możemy sprawdzić, czy za każdym razem wyszło to samo
-         takie_same_sumy = st81_suma == st81_suma2 & st81_suma2 == st81_suma3,
-         takie_same_srednie =
-           st81_srednia == st81_srednia2 & st81_srednia2 == st81_srednia3)
-head(select(dyscyplina, contains("suma"), contains("srednia")))
-summary(select(dyscyplina, takie_same_sumy, takie_same_srednie))
-```
-
-### Zadanie
-
-Dowolnie wybraną metodą oblicz sumę i średnią *surowych punktów* na skali oceny wspierania ucznia przez nauczyciela (zmienne `st77q01` - `st77q06`). Możesz zrobić to albo w *ramce danych* `dane`, albo wcześniej wybrać zmienne opisujące tą skalę i przypisać je do nowej *ramki danych*.
-
-```{r}
-# to jest miejsce na Twój kod
 ```

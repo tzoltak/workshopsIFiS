@@ -1,0 +1,84 @@
+---
+title: "RS1 Przekształcanie danych w R i proste indeksy stylów odpowiedzi - materiały uzupełniające"
+author: "Tomasz Żółtak, Artur Pokropek, Marek Muszyński"
+date: "12.02.2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+editor_options: 
+  chunk_output_type: console
+---
+
+# Przygotowanie
+
+Załadujmy pakiety i wczytajmy dane:
+
+```{r}
+library(haven)
+library(dplyr)
+
+dane <- read_dta("PISA2012_some_countries_sectionD.dta") %>%
+  filter(questid != 1)
+
+dyscyplina <- dane %>%
+  select(cnt, schoolid, stidstd, starts_with("st81"), escs, pv1math) %>%
+  filter(cnt == "POL")
+str(dyscyplina)
+head(dyscyplina)
+summary(dyscyplina)
+count(dyscyplina, st81q01)
+```
+
+## To samo przekształcenie na wielu zmiennych w wywołaniu `mutate()`
+
+Jeśli chcemy wykonać to samo przekształcenie na wielu zmiennych (jak w przykładach z dychotomizacją i *odwróceniem* pytań powyżej), pisanie niemal identycznego fragmentu kodu dla każdej zmiennej jest uciążliwe (i podatne na błędy). Na szczęście pakiet *dplyr* daje nam możliwość opisania, że to samo przekształcenie ma być zastosowane do wielu zmiennych, wymaga to jednak opisania tego przekształcenia w sposób, który jest nieco bardziej *abstrakcyjny*. W tym celu jako argument `mutate()` podaje się wywołanie funkcji `across()` - pierwszy argument `across()` wskazuje, na jakich zmiennych ma zostać wykonane przekształcenie, drugi, jakie przekształcenie ma zostać wykonane.
+
+Przykładowo wykonanie dychotomizacji wszystkich 5 zmiennych opisujących odpowiedzi na pytania dot. dyscypliny z wykorzystaniem funkcji `across()` wygląda tak:
+
+```{r}
+dyscyplina <- dyscyplina %>%
+  select(-ends_with("_dich")) %>% # usuwamy zmienne utworzone wcześniej
+  mutate(across(starts_with("st81"),
+                list("dich" = ~if_else(. == 4, 1, 0))))
+View(dyscyplina)
+```
+
+Przyjrzyjmy się szczegółom tego wywołania:
+
+- przed wywołaniem `across()` **nie** stawiamy nazwy ze znakiem `=` - nie miałoby to sensu, bo nie chcemy utworzyć jednej nowej zmiennej, lecz wiele; nazwy utworzonych zmiennych będą tutaj takie same jak tych, które podlegają agregacji;
+- pierwszy argument `across()` opisuje, jakie zmienne mają zostać przekształcone;
+
+    -   argument ten podaje się podobnie, jak w wywołaniu `select()` z tą różnicą, że jeśli potrzebujemy użyć więcej niż jednego wyrażenia opisującego wybierane zmienne, to musimy otaczyć je wywołaniem `c()` (tak aby mogły zostać przekazane `across()` jako pojedynczy argument), np:
+    
+        -   `across(c(st81q01, st81q02, st81q03, st81q04, st81q04), )`,
+        -   `across(c(starts_with("st81"), -ends_with("_dich")), )`;
+- drugi argument opisuje przekształcenie, które ma zostać wykonane (w sposób nieco *abstrakcyjny*); podane tu wyrażenie od używanych wcześniej różni się tym, że:
+  - wyrażenie opisujące przekształcenie należy przekazać jako element listy;
+    - jest to konieczne, aby móc utworzyć nowe zmienne, a nie nadpisać już istniejące, umożliwia bowiem podanie przyrostka, który zostanie użyty do stworzenia nazwy nowej zmiennej (domyślnie zostanie z nią połączony znakiem "_");
+      - w przykładzie powyżej deklarujemy, że ma nazwy nowych zmiennych mają otrzymać przyrostek "dich" (czyli w praktyce "_dich");
+  - samo wyrażenie opisujące przekształcenie należy poprzedzić znakiem `~`;
+  - zamiast nazwy (konkretnej) przekształcanej zmiennej należy wstawić znak `.`.
+
+Gdybyśmy chcieli nie tworzyć nowych zmiennych, ale nadpisać już istniejące, kod byłby prostszy:
+
+```{r}
+# tylko poglądowo - nie przypisujemy wyniku działania do żadnego obiektu
+dyscyplina %>%
+  select(-ends_with("_dich")) %>% # usuwamy zmienne utworzone wcześniej
+  mutate(across(starts_with("st81"),
+                ~if_else(. == 4, 1, 0)))
+```
+
+### Zadanie
+
+Spróbuj opisać przy pomocy funkcji `across()` przekształcenie *odwrócenia* skali odpowiedzi pytań opisanych zmiennymi `st88q01` i `st88q02` w *ramce danych* `nastawienie`. Symbol `.` może wystąpić w specyfikacji przekształcenia wielokrotnie (po prostu należy go umieścić wszędzie tam, gdzie powinna zostać podstawiona nazwa przekształcanej zmiennej).
+
+```{r}
+nastawienie <- dane %>%
+  select(cnt, schoolid, stidstd, starts_with("st88")) %>%
+  mutate(across(,
+                ))
+```
+

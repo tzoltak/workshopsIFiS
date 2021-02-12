@@ -1,0 +1,431 @@
+---
+title: "RS1 Przekształcanie danych w R i proste indeksy stylów odpowiedzi - dzień 2."
+author: "Tomasz Żółtak, Artur Pokropek, Marek Muszyński"
+date: "12.02.2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+editor_options: 
+  chunk_output_type: console
+---
+
+# Przygotowanie
+
+Załadujmy pakiety i wczytajmy dane:
+
+```{r}
+library(haven)
+library(dplyr)
+library(careless)
+
+dane <- read_dta("PISA2012_some_countries_sectionD.dta") %>%
+  filter(questid != 1)
+```
+
+# Przekształcanie zmiennych w *ramce danych* (i tworzenie nowych) - część 2.
+
+Do przekształcania istniejących i tworzenia nowych zmiennych w *ramce danych* służy funkcja `mutate()` pakietu *dplyr*. Jako pierwszy argument przyjmuje ona *ramkę danych*, a kolejne argumenty to wyrażenia opisują przekształcenia zmiennych.
+
+## Podstawowa składnia
+
+Najprostszy sposób wykorzystania funkcji `mutate()` to opisanie przekształceń w formie: `nazwaZmiennej = przeksztalcenie(istniejacaZmienna)` - jeśli zmienna, której nazwa znajduje się po lewej stronie operatora `=` już istnieje w tej ramce danych, jej wartości zostaną nadpisane, jeśli nie, na końcu *ramki danych* zostanie utworzona nowa zmienne o tej nazwie.
+
+Aby uprościć sobie obserwowanie, jak działa funkcja `mutate()`, skorzystajmy z *ramki danych* zawierającej odpowiedzi na pytania powiązane z tylko jedną skalą opisującą ocenę dyscypliny panującej w klasie (lub jej brak) oraz zmienne `escs` i `pv1math`, obejmującą tylko uczniów z Polski:
+
+```{r}
+dyscyplina <- dane %>%
+  select(cnt, schoolid, stidstd, starts_with("st81"), escs, pv1math) %>%
+  filter(cnt == "POL")
+str(dyscyplina)
+head(dyscyplina)
+summary(dyscyplina)
+count(dyscyplina, st81q01)
+```
+
+Załóżmy, że chcemy teraz wystandaryzować (tzn. przekształcić liniowo w taki sposób, aby średnia zmiennej była równa 0, a odchylenie standardowe 1) zmienne `escs` i `pv1math` w ramach tej grupy osób i zapisać wynik takich przekształceń w nowych zmiennych. Aby to zrobić, możemy wykonać kod:
+
+```{r}
+dyscyplina <- dyscyplina %>%
+  mutate(escs_std = (escs - mean(escs, na.rm = TRUE)) / sd(escs, na.rm = TRUE),
+         # można też użyć funkcji scale()
+         pv1math_std = as.vector(scale(pv1math)))
+head(dyscyplina)
+# sprawdźmy wartości statystyk
+mean(dyscyplina$escs_std, na.rm = TRUE)
+sd(dyscyplina$escs_std, na.rm = TRUE)
+mean(dyscyplina$pv1math_std, na.rm = TRUE)
+sd(dyscyplina$pv1math_std, na.rm = TRUE)
+```
+
+## Funkcja `if_else()`
+
+Przekształcenia zmiennych *kategorialnych* - nawet jeśli ich wartości są reprezentowane przez liczby - zwykle mają postać *warunków logicznych*. Załóżmy np., że chcemy utworzyć w *ramce danych* `dyscyplina` zdychotomizowane zmienne opisujące odpowiedzi na pytania ST81 i że dychotomizacja będzie przebiegać w ten sposób, że jeśli uczeń wybrał odpowiedź *nigdy lub prawie nigdy* (wartość 4; jest to odpowiedź wskazująca na wysoki poziom dyscypliny), to zakodujemy to wartością 1, a wybór innej odpowiedzi zakodujemy wartością 0. Możemy do tego użyć funkcji `if_else()`: jako pierwszy argument przyjmuje ona wyrażenie zwracające wartość logiczną, drugi argument wskazuje wartość, która ma zostać zwrócona, jeśli wyrażenie to przyjmie `TRUE`, a trzeci argument wartość, która ma zostać zwrócona, jeśli wyrażenie przyjmie wartość `FALSE`):
+
+```{r}
+dyscyplina <- dyscyplina %>%
+  mutate(st81q01_dich = if_else(st81q01 == 4, 1, 0),
+         st81q02_dich = if_else(st81q02 == 4, 1, 0),
+         st81q03_dich = if_else(st81q03 == 4, 1, 0),
+         st81q04_dich = if_else(st81q04 == 4, 1, 0),
+         st81q05_dich = if_else(st81q05 == 4, 1, 0))
+# będzie lepiej widać, jeśli pominiemy inne zmienne
+head(select(dyscyplina, starts_with("st81")))
+# możemy też porównać rozkłady - tu dla pierwszego pytania
+count(dyscyplina, st81q01)
+count(dyscyplina, st81q01_dich)
+```
+
+## Funkcja `case_when()`
+
+Często przekształcenia, które chcemy wykonać nie dają się opisać w formie pojedynczego warunku logicznego, lecz wymagają rozpatrzenia sekwencji takich warunków. W takim przypadku możemy użyć funkcji `case_when()`. Przyjrzyjmy się skali nastawienia do szkoły:
+
+```{r}
+nastawienie <- dane %>%
+  select(cnt, schoolid, stidstd, starts_with("st88"))
+str(nastawienie)
+head(nastawienie)
+count(nastawienie, st88q01)
+```
+
+Jeśli przyjąć, że chcemy mierzyć pozytywne nastawienie do szkoły (poczucie sensu uczenia się w szkole), to dwa pierwsze pytania tej skali będą *odwrócone* - wyrażenie zgody z wyrażonymi w nich stwierdzeniami wskazuje właśnie na nastawienie negatywne. W związku z tym możemy chcieć przekodować odpowiedzi na te pytania tak, aby *zmienić kierunek* skali ich odpowiedzi (wyrażonej liczbami), tzn. zamienić 4 na 1, 3 na 2, 2 na 3 i 1 na 4. Warunki takie zapisuje się jako kolejne argument w wywołaniu funkcji `case_when()` w formie: `zmienna == obecna_wartość ~ nowa_wartość` (w ogólności po lewej stronie znaku `~` może znaleźć się dowolne wyrażenie zwracające wartość logiczną - jeśli przyjmie ono wartość `TRUE`, to danej obserwacji zostanie przypisana wartość podana po prawej stronie znaku `~`):
+
+```{r}
+nastawienie <- nastawienie %>%
+  mutate(st88q01_odwr = case_when(st88q01 == 4 ~ 1,
+                                  st88q01 == 3 ~ 2,
+                                  st88q01 == 2 ~ 3,
+                                  st88q01 == 1 ~ 4),
+         st88q02_odwr = case_when(st88q02 == 4 ~ 1,
+                                  st88q02 == 3 ~ 2,
+                                  st88q02 == 2 ~ 3,
+                                  st88q02 == 1 ~ 4))
+head(nastawienie)
+# możemy też porównać rozkłady - tu dla pierwszego pytania
+count(nastawienie, st88q01)
+# to nie jest już zmienna etykietowana!
+count(nastawienie, st88q01_odwr)
+```
+
+Dla ścisłości należy jeszcze dodać, że:
+
+-   jeśli dla jakiejś obserwacji pewien warunek przyjął wartość `TRUE`, to zostanie jej przypisana powiązana z tym warunkiem wartość i **dalsze warunki nie będą już dla tej obserwacji sprawdzane**;
+-   jeśli żaden z warunków podanych w wywołaniu `case_when()` nie przyjął dla danej obserwacji wartości `TRUE`, to zostanie jej przypisany brak danych (`NA`).
+
+### Zadanie
+
+W *ramce danych* `porzadek` wybrane zostały odpowiedzi na pytania dot. oceny sposobu organizacji pracy klasy przez nauczyciela:
+
+```{r}
+porzadek <- dane %>%
+  select(cnt, schoolid, stidstd, starts_with("st85"))
+str(porzadek)
+head(porzadek)
+count(porzadek, st85q01)
+```
+
+Przy pomocy funkcji `mutate` przekoduj odpowiedzi na pytania należące do tej skali w taki sposób, aby odpowiedzi wskazujące na pozytywną ocenę sposobu organizacji pracy przez nauczyciela otrzymały wartość 1 (bez względu na *nasilenie* tej oceny), a odpowiedzi wskazujące na negatywną ocenę otrzymały wartość 0 (bez względu na *nasilenie* tej oceny). Weź pod uwagę, że pytanie `st85q04` jest *odwrócone*.
+
+```{r}
+porzadek <- porzadek %>%
+  mutate(st85q01 = case_when(st85q01 %in% c(1, 2) ~ 1,
+                             st85q01 %in% c(3, 4) ~ 0),
+         st85q02 = case_when(st85q02 %in% c(1, 2) ~ 1,
+                             st85q02 %in% c(3, 4) ~ 0),
+         st85q03 = case_when(st85q03 %in% c(1, 2) ~ 1,
+                             st85q03 %in% c(3, 4) ~ 0),
+         st85q04 = case_when(st85q04 %in% c(3, 4) ~ 1,
+                             st85q04 %in% c(1, 2) ~ 0))
+```
+
+## Obliczenie zmiennej z wykorzystaniem wielu zmiennych
+
+Zajmując się skalami złożonymi z wielu pytań często chcemy wykonać operację przekształcenia danych, która wymaga użycia informacji z wielu różnych zmiennych dla tej samej osoby - np. sumowanie zmiennych opisujących odpowiedzi na poszczególne pytania, aby uzyskać (*surowy*) wynik łączny. Można to oczywiście zrobić *na piechotę*, ale jest to uciążliwe (zwłaszcza jeśli skala jest dłuższa):
+
+```{r}
+dyscyplina <- dyscyplina %>%
+  mutate(st81_suma = st81q01 + st81q02 + st81q03 + st81q04 + st81q05,
+         # w dalszych przekształceniach możemy użyć zmiennej utworzonej we
+         # wcześniejszym przekształceniu w ramach tego samego wywołania mutate()
+         st81_srednia = st81_suma / 5)
+summary(dyscyplina)
+```
+
+W związku z tym wygodniej jest użyć jednego z dwóch alternatywnych podejść.
+
+### Funkcje działające na macierzach
+
+Niektóre funkcje R działają na macierzach, czyli, z naszego punktu widzenia, wielu kolumnach *ramki danych* jednocześnie (co do zasady powinny być to kolumny tego samego typu). Np. funkcje `rowSums()` i `rowMeans()` pozwalają obliczyć odpowiednio sumy i średnie w (całych) wierszach przekazanych do nich macierzy:
+
+```{r}
+st81suma <- dyscyplina %>%
+  select(starts_with("st81q"), -ends_with("_dich")) %>%
+  rowSums()
+# otrzymaliśmy wektor
+str(st81suma)
+head(st81suma)
+# którego wartości odpowiadają tym obliczonym wcześniej w ramach ramki danych
+# `dyscyplina`
+head(dyscyplina$st81_suma)
+```
+
+Jednak w ten sposób otrzymujemy oddzielny obiekt - wektor wartości, który znajduje się poza *ramką danych*, na podstawie której został obliczony.
+
+Aby użyć takiej funkcji w ramach wywołania `mutate()` konieczne jest przekazanie jej danych w formie pojedynczego obiektu zawierającego podzbiór kolumn przetwarzanej *ramki danych*. W tym celu:
+
+-   w ramach wywołania `mutate()` przypisujemy wynik działania funkcji działającej na macierzy tak, jak zrobilibyśmy to działając poza `mutate()` (tak, jak zrobiliśmy to przed chwilą);
+-   w miejscu, w którym w przygotowanym fragmencie kodu występowała nazwa *ramki danych*, z której wybieramy zmienne należy zastąpić wywołaniem funkcji `cur_data()`:
+
+```{r}
+dyscyplina <- dyscyplina %>%
+  mutate(st81_suma2 = rowSums(cur_data() %>% 
+                                select(starts_with("st81q"),
+                                       -ends_with("_dich"))),
+         st81_srednia2 = rowMeans(cur_data() %>% 
+                                select(starts_with("st81q"),
+                                       -ends_with("_dich"))))
+# możemy sprawdzić, że policzyło się tak samo, jak wcześniej "na piechotę"
+summary(dyscyplina)
+head(select(dyscyplina, contains("suma"), contains("srednia")))
+```
+
+### Użycie funkcji `rowwise()` i `c_across()`
+
+Możliwe jest też inne podejście:
+
+1.  pogrupowanie *ramki danych* z wykorzystaniem funkcji `rowwise()` - na takiej *ramce danych* każda operacja przekształcenia danych będzie wykonywana oddzielnie na każdym z wierszy,
+
+2.  użycie do obliczenia zmiennych funkcji działających na wektorach, takich jak `sum()` czy `mean()` (itp.):
+
+    -   w miejscu, gdzie zwykle w wywołaniu takiej funkcji umieszcza się nazwę zmiennej (wektora), dla której ma zostać obliczona statystyka, trzeba umieścić wywołanie funkcji `c_across()`, a w nim wyspecyfikować, które kolumny mają zostać uwzględnione w obliczeniach - robi się to w ten sam sposób, co podając pierwszy argument omawianej wcześniej funkcji `across()`.
+
+```{r}
+dyscyplina <- dyscyplina %>%
+  rowwise() %>%
+  mutate(st81_suma3 = sum(c_across(c(starts_with("st81q"),
+                                     -ends_with("_dich")))),
+         st81_srednia3 = mean(c_across(c(starts_with("st81q"),
+                                         -ends_with("_dich")))),
+         # możemy sprawdzić, czy za każdym razem wyszło to samo
+         takie_same_sumy = st81_suma == st81_suma2 & st81_suma2 == st81_suma3,
+         takie_same_srednie =
+           st81_srednia == st81_srednia2 & st81_srednia2 == st81_srednia3) %>%
+  ungroup()
+head(select(dyscyplina, contains("suma"), contains("srednia")))
+summary(select(dyscyplina, takie_same_sumy, takie_same_srednie))
+```
+
+Wywołanie funkcji `ungroup()` na końcu ciągu przekształceń usuwa działanie funkcji `rowwise()` (gdyby go tam nie dopisać, każde kolejne przekształcenie *ramki danych* `dyscyplina` byłoby wykonywane oddzielnie na każdym wierszu).
+
+### Zadanie
+
+W ramach *ramki danych* `dyscyplina` oblicz zmienną `sameBD`, która będzie zdawać sprawę z tego, czy dany respondent ma braki danych (`NA`) we wszystkich zmiennych opisujących odpowiedzi na pytania baterii "st81".
+
+Weź pod uwagę, że:
+
+- zadanie da się wykonać zarówno jedną, jak i drugą z opisanych wyżej metod,
+- funkcję `is.na()` można wywołać na wektorze, ale też na całej *ramce danych* - w tym drugim wypadku zwróci macierz o tej samej liczbie wierszy i kolumn, zawierającą wartości logiczne, opisujące, czy dana komórka zawierała brak danych,
+- wartości logiczne można w R sumować - wartość `TRUE` jest wtedy traktowana jako 1, a wartość `FALSE` jako 0.
+
+Dla ułatwienia, na początek usuń jeszcze z ramki danych `dyscyplina` wcześniej utworzone zmienne, wykonując kod zapisany na początku poniższego bloku kodu:
+
+```{r}
+dyscyplina <- dyscyplina %>%
+  select(-ends_with("_dich"), -contains("sum"), -contains("sredn"))
+# to jest miejsce na Twój kod
+
+# podejście z rowSums
+dyscyplina <- dyscyplina %>%
+  mutate(sameBD1 = rowSums(cur_data() %>%
+                            select(starts_with("st81q")) %>%
+                            is.na()) == 5)
+# podejście z rowwise()
+dyscyplina <- dyscyplina %>%
+  rowwise() %>%
+  mutate(sameBD2 = sum(is.na(c_across(starts_with("st81q")))) == 5) %>%
+  ungroup()
+```
+
+# Obliczenie wybranych indeksów *nieuważnego odpowiadania*
+
+W tej części zajmiemy się obliczaniem indeksów, których wartości mogą posłużyć do wskazania respondentów, którzy prawdopodobnie udzielali odpowiedzi w sposób *nieuważny*. Części obliczeń dokonamy sami, a części wykorzystując funkcje pakietu *careless*.
+
+Autorzy badania PISA poradzili sobie ze ew. skłonnością do udzielania przez uczniów odpowiedzi *środkowych* w sposób bezwzględny - wszystkie baterie pytań w części D kwestionariusza (i prawie wszystkie w całym kwestionariuszu) mają skale o parzystej liczbie odpowiedzi (a więc bez kategorii środkowej). W związku z tym skupimy się na skłonności do udzielania odpowiedzi skrajnych, skłonności do *potakiwania* oraz zróżnicowaniu odpowiedzi (a właściwie oznakach deficytu tego zróżnicowania).
+
+Ponieważ indeksy *nieuważnego odpowiadania* działają dużo lepiej w odniesieniu do dłuższych baterii pytań, zajmiemy się skalą poczucia przynależności do społeczności szkolnej.
+
+- nazwy zmiennych opisujących odpowiedzi na pytania tej skali zaczynają się od "st87";
+- skala odpowiedzi to: 1 - "Strongly agree", 2 - "Agree", 3 - "Disagree", 4 - "Strongly disagree";
+- zmienne `st87q01`, `st87q04` i `st87q06` opisują odpowiedzi na pytania *odwrócone*.
+
+Tworząc *ramkę danych* `przynaleznosc` usuniemy z niej od razu tych respondentów, którzy nie udzielili żadnej (rzeczowej) odpowiedzi na pytanie tej skali.
+
+```{r}
+przynaleznosc <- dane %>%
+  select(cnt, schoolid, stidstd, questid, age, grade, pv1math, pv1read,
+         starts_with("st87")) %>%
+  mutate(jestBD = rowSums(cur_data() %>%
+                            select(starts_with("st87")) %>%
+                            is.na()) > 0,
+         sameBD = rowSums(cur_data() %>%
+                            select(starts_with("st87")) %>%
+                            is.na()) == 9) %>%
+  filter(!sameBD) %>%
+  select(-sameBD)
+str(przynaleznosc)
+count(przynaleznosc, st87q01)
+```
+
+### Zadanie
+
+Funkcje `irv()` i `longstring()` z pakietu *careless* obliczają dla każdego badanego w ramach przekazanej im *ramki danych* odpowiednio odchylenie standardowe odpowiedzi (ściśle: kodów odpowiedzi) oraz długość najdłuższego nieprzerwanego ciągu tych samych odpowiedzi. Korzystając z tych funkcji w ramach wywołania `mutate()` oblicz w *ramce danych* `przynaleznosc` nowe zmienne: `irv` i `longstring`, które będą zawierać odpowiednie indeksy *nieuważnego odpowiadania*.
+
+Weź pod uwagę, że sposób przekazania danych do funkcji `irv()` i `longstring()` jest analogiczny, jak w przypadku omawianej wcześniej funkcji `rowSums()`.
+
+```{r}
+# to jest miejsce na Twój kod
+przynaleznosc <- przynaleznosc %>%
+  mutate(irv = irv(cur_data() %>% select(starts_with("st87"))),
+         longstring = longstring(cur_data() %>% select(starts_with("st87"))))
+```
+
+### Zadanie
+
+Korzystając z funkcji `rowwise()` i `c_across()` (oraz `mutate()`) oblicz w ramach *ramki danych* `przynaleznosc` zmienne:
+
+- `skrajne` opisującą procent pytań z baterii "st87", na które dany respondent udzielił odpowiedzi skrajnych (tj. 1 lub 4);
+- `tak_wprost` opisującą procent odpowiedzi wyrażających zgadzanie się z zawartym w pytaniu stwierdzeniem (tj. 1 lub 2) **w pytaniach zadanych *wprost*** z baterii "st87";
+- `tak_odwr` opisującą procent odpowiedzi wyrażających zgadzanie się z zawartym w pytaniu stwierdzeniem (tj. 1 lub 2) **w pytaniach *odwróconych*** z baterii "st87";
+- `kor_tak` 
+- `irv_ja` opisującą odchylenie standardowe (kodów) odpowiedzi danego respondenta na pytania z baterii "st87" (porównamy ją ze zmienną obliczoną przez funkcję `irv`).
+
+Weź pod uwagę, że wartości logiczne można w R sumować - wartość `TRUE` jest wtedy traktowana jako 1, a wartość `FALSE` jako 0.
+
+```{r}
+# to jest miejsce na Twój kod
+przynaleznosc <- przynaleznosc %>%
+  rowwise() %>%
+  mutate(skrajne = sum(c_across(starts_with("st87")) %in% c(1, 4)) / 9,
+         tak_wprost =
+           sum(c_across(c(starts_with("st87"),
+                          -st87q01, -st87q04, -st87q06)) %in% c(1, 2)) / 6,
+         tak_odwr = sum(c_across(c(st87q01, st87q04, st87q06)) %in% c(1, 2)) / 3,
+         irv_ja = sd(c_across(starts_with("st87"))))
+```
+
+Jeśli obliczyłeś/aś wszystkie indeksy, to interesujące może być choćby najprostsze zbadanie związków, jakie zachodzą pomiędzy nimi w analizowanej zbiorowości:
+
+```{r}
+przynaleznosc %>%
+  select(irv, longstring, skrajne, tak_wprost, tak_odwr) %>%
+  cor(use = "pairwise.complete.obs") %>%
+  round(2)
+```
+
+# Agregacja danych
+
+Do tej pory zajmowaliśmy się przekształceniami zmiennych w *ramce danych*, które zachowywały liczbę zwracanych wierszy. Na potrzeby analizy wyników potrzebujemy jednak obliczone indeksy zagregować - np. policzyć ich średnie (albo inne statystyki) w ramach poszczególnych krajów (lub inaczej dobranych grup).
+
+W ramach pakietu *dplyr* służy do tego funkcja `group_by()` w połączeniu z `summarise()`:
+
+- `group_by()` pozwala podać zmienne, wg których *ramka danych* ma zostać pogrupowana,
+- `summarise()` używa się w sposób niemal identyczny jak `mutate()`, ale wyrażenia, które dokonują obliczeń w ramach tej funkcji powinny zwracać pojedyncze wartości, jak np. funkcja `sum()`, `mean` itp.
+   - (Ściśle: od wersji 1.0.0 pakietu nie jest wymagane, aby używane wyrażenia zwracały pojedyncze wartości, ale omawianie takich nietypowych przypadków wykracza dalece poza ramy tego warsztatu.)
+
+Obliczmy więc średnie wartości indeksów w ramach poszczególnych krajów:
+
+```{r}
+przynaleznoscKraje <- przynaleznosc %>%
+  group_by(cnt) %>%
+  summarise(irv = mean(irv, na.rm = TRUE),
+            longstring = mean(longstring, na.rm = TRUE),
+            skrajne = mean(skrajne, na.rm = TRUE),
+            tak_wprost = mean(tak_wprost, na.rm = TRUE),
+            tak_odwr = mean(tak_odwr, na.rm = TRUE))
+View(przynaleznoscKraje)
+```
+
+### Zadanie
+
+Konstrukcja kwestionariusza ucznia w badaniu PISA 2012 pozwala przeprowadzić interesującą analizę: w zależności od wersji kwestionariusza (w naszym przypadku B lub C - w wersji A nie zadawano pytań dot. poczucia przynależności) dana bateria pytań mogła znaleźć się w pierwszej lub drugiej (jeśli chodzi o kolejność) jego części. Można przy tym zakładać, że respondenci wypełniający te same pytania w dalszej części ankiety byli bardziej zmęczeni, więc powinni przejawiać większą skłonność do udzielania odpowiedzi w sposób *nieuważny*. Przeprowadź analizę, w której porównasz średnie wartości obliczonych wcześniej dla skali przynależności indeksów *nieuważnego odpowiadania* ze względu na wersję kwestionariusza. Przeprowadź analogiczną analizę w podziale (jednocześnie) ze względu na kraj i wersję kwestionariusza.
+
+W wersji B kwestionariusza (`questid` równe 2) pytania ze skali przynależności znalazły się w jego początkowej części, a w wersji C (`questid` równe 3) w końcowej.
+
+```{r}
+# to jest miejsce na Twój kod
+przynaleznoscWersja <- przynaleznosc %>%
+  group_by(questid) %>%
+  summarise(irv = mean(irv, na.rm = TRUE),
+            longstring = mean(longstring, na.rm = TRUE),
+            skrajne = mean(skrajne, na.rm = TRUE),
+            tak_wprost = mean(tak_wprost, na.rm = TRUE),
+            tak_odwr = mean(tak_odwr, na.rm = TRUE))
+View(przynaleznoscWersja)
+
+przynaleznoscWersjaKraj <- przynaleznosc %>%
+  group_by(cnt, questid) %>%
+  summarise(irv = mean(irv, na.rm = TRUE),
+            longstring = mean(longstring, na.rm = TRUE),
+            skrajne = mean(skrajne, na.rm = TRUE),
+            tak_wprost = mean(tak_wprost, na.rm = TRUE),
+            tak_odwr = mean(tak_odwr, na.rm = TRUE))
+View(przynaleznoscWersjaKraj)
+```
+
+## Obliczenie tej samej statystyki dla wielu zmiennych na raz
+
+Jeśli dokonując agregacji obliczamy tą samą statystykę dla wielu zmiennych, pakiet *dplyr* udostępnia nam składnię, która pozwala nie pisać wyrażeń opisujących obliczenie dla każdej z tych zmiennych oddzielnie. W tym celu należy wykorzystać funkcję `across()`. Np. aby dokonać tych samych obliczeń, które robiliśmy wcześniej, należy użyć kodu:
+
+```{r}
+przynaleznosc %>%
+  group_by(cnt) %>%
+  summarise(across(c(irv, longstring, skrajne, tak_wprost, tak_odwr),
+                   ~mean(., na.rm = TRUE)))
+```
+
+- przed wywołaniem `across()` **nie** stawiamy nazwy ze znakiem `=` - nie miałoby to sensu, bo nie chcemy utworzyć jednej nowej zmiennej, lecz wiele; nazwy utworzonych zmiennych będą tutaj takie same jak tych, które podlegają agregacji;
+- pierwszy argument `across()` opisuje, jakie zmienne mają zostać przekształcone;
+
+    -   argument ten podaje się podobnie, jak w wywołaniu `select()` z tą różnicą, że jeśli potrzebujemy użyć więcej niż jednego wyrażenia opisującego wybierane zmienne, to musimy otaczyć je wywołaniem `c()` (tak aby mogły zostać przekazane `across()` jako pojedynczy argument);
+- drugi argument opisuje przekształcenie, które ma zostać wykonane (w sposób nieco *abstrakcyjny*); podane tu wyrażenie od używanych wcześniej różni się tym, że:
+  - należy poprzedzić je znakiem `~`;
+  - zamiast nazwy (konkretnej) przekształcanej zmiennej należy wstawić znak `.`.
+
+Funkcji `across()` można w analogiczny sposób używać również w ramach wywołań `mutate()`, ale nie będziemy tego ćwiczyć na tych warsztatach.
+
+## Obliczenie wielu statystyk na raz dla tej samej zmiennej
+
+Często dokonując agregacji chcemy dla jednej zmiennej obliczyć kilka różnych statystyk. Również taką operację można *zautomatyzować* z wykorzystaniem funkcji `across()`. Np. aby obliczyć minimum, 1. i 3. kwartyl, medianę, maksimum, średnią i odchylenie standardowe dla indeksu `irv`, możemy użyć kodu:
+
+```{r}
+przynaleznosc %>%
+  group_by(cnt) %>%
+  summarise(across(irv, # tylko jedno wyrażenie, więc nie wymaga otaczanie c()
+                   list(srednia = ~mean(., na.rm = TRUE),
+                        odch.std. = ~sd(., na.rm = TRUE),
+                        min = ~min(., na.rm = TRUE),
+                        q1 = ~quantile(., 0.25, na.rm = TRUE),
+                        mediana = ~median(., na.rm = TRUE),
+                        q3 = ~quantile(., 0.75, na.rm = TRUE)),
+                        maks = ~max(., na.rm = TRUE)))
+```
+
+W tym przypadku drugi argument `across()` ma bardziej skomplikowaną strukturę:
+
+- poszczególne przekształcenia trzeba zdefiniować jako argumenty w ramach wywołania funkcji `list()` (tj. jako elementy listy);
+- poszczególnym przekształceniom należy nadać nazwy - zostaną one wykorzystane jako przyrostki dopisywane do nazw przekształcanych zmiennych przy tworzeniu nazw zmiennych w wynikowej *ramce danych*;
+  - istnieje możliwość modyfikacji sposobu tworzenia nazw nowo tworzonych zmiennych przy pomocy dodatkowego argumentu `.names` funkcji `across()` - p. dokumentacja tej funkcji.
+
+### Zadanie
+
+Oba opisane powyżej podejścia można ze sobą połączyć. Napisz poniżej kod, który obliczy średnie i odchylenia standardowe zmiennych `longstring` i `skrajne` (z *ramki danych* `przynaleznosc`) dla poszczególnych wersji kwestionariusza PISA.
+
+```{r}
+# to jest miejsce na Twój kod
+przynaleznosc %>%
+  group_by(questid) %>%
+  summarise(across(c(longstring, skrajne),
+                   list(srednia = ~mean(., na.rm = TRUE),
+                        odch.std. = ~sd(., na.rm = TRUE))))
+```
