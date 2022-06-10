@@ -219,9 +219,9 @@ W ramach *ramki danych* `dyscyplina` oblicz zmienną `sameBD`, która będzie z
 
 Weź pod uwagę, że:
 
-- zadanie da się wykonać zarówno jedną, jak i drugą z opisanych wyżej metod,
-- funkcję `is.na()` można wywołać na wektorze, ale też na całej *ramce danych* - w tym drugim wypadku zwróci macierz o tej samej liczbie wierszy i kolumn, zawierającą wartości logiczne, opisujące, czy dana komórka zawierała brak danych,
-- wartości logiczne można w R sumować - wartość `TRUE` jest wtedy traktowana jako 1, a wartość `FALSE` jako 0.
+-   zadanie da się wykonać zarówno jedną, jak i drugą z opisanych wyżej metod,
+-   funkcję `is.na()` można wywołać na wektorze, ale też na całej *ramce danych* - w tym drugim wypadku zwróci macierz o tej samej liczbie wierszy i kolumn, zawierającą wartości logiczne, opisujące, czy dana komórka zawierała brak danych,
+-   wartości logiczne można w R sumować - wartość `TRUE` jest wtedy traktowana jako 1, a wartość `FALSE` jako 0.
 
 Dla ułatwienia, na początek usuń jeszcze z ramki danych `dyscyplina` wcześniej utworzone zmienne, wykonując kod zapisany na początku poniższego bloku kodu:
 
@@ -239,9 +239,9 @@ Autorzy badania PISA poradzili sobie ze ew. skłonnością do udzielania przez u
 
 Ponieważ indeksy *nieuważnego odpowiadania* działają dużo lepiej w odniesieniu do dłuższych baterii pytań, zajmiemy się skalą poczucia przynależności do społeczności szkolnej.
 
-- nazwy zmiennych opisujących odpowiedzi na pytania tej skali zaczynają się od "st87";
-- skala odpowiedzi to: 1 - "Strongly agree", 2 - "Agree", 3 - "Disagree", 4 - "Strongly disagree";
-- zmienne `st87q01`, `st87q04` i `st87q06` opisują odpowiedzi na pytania *odwrócone*.
+-   nazwy zmiennych opisujących odpowiedzi na pytania tej skali zaczynają się od "st87";
+-   skala odpowiedzi to: 1 - "Strongly agree", 2 - "Agree", 3 - "Disagree", 4 - "Strongly disagree";
+-   zmienne `st87q01`, `st87q04` i `st87q06` opisują odpowiedzi na pytania *odwrócone*.
 
 Tworząc *ramkę danych* `przynaleznosc` usuniemy z niej od razu tych respondentów, którzy nie udzielili żadnej (rzeczowej) odpowiedzi na pytanie tej skali.
 
@@ -275,11 +275,11 @@ Weź pod uwagę, że sposób przekazania danych do funkcji `irv()` i `longstrin
 
 Korzystając z funkcji `rowwise()` i `c_across()` (oraz `mutate()`) oblicz w ramach *ramki danych* `przynaleznosc` zmienne:
 
-- `skrajne` opisującą procent pytań z baterii "st87", na które dany respondent udzielił odpowiedzi skrajnych (tj. 1 lub 4);
-- `tak_wprost` opisującą procent odpowiedzi wyrażających zgadzanie się z zawartym w pytaniu stwierdzeniem (tj. 1 lub 2) **w pytaniach zadanych *wprost*** z baterii "st87";
-- `tak_odwr` opisującą procent odpowiedzi wyrażających zgadzanie się z zawartym w pytaniu stwierdzeniem (tj. 1 lub 2) **w pytaniach *odwróconych*** z baterii "st87";
-- `kor_tak` 
-- `irv_ja` opisującą odchylenie standardowe (kodów) odpowiedzi danego respondenta na pytania z baterii "st87" (porównamy ją ze zmienną obliczoną przez funkcję `irv`).
+-   `skrajne` opisującą procent pytań z baterii "st87", na które dany respondent udzielił odpowiedzi skrajnych (tj. 1 lub 4);
+-   `tak_wprost` opisującą procent odpowiedzi wyrażających zgadzanie się z zawartym w pytaniu stwierdzeniem (tj. 1 lub 2) **w pytaniach zadanych *wprost*** z baterii "st87";
+-   `tak_odwr` opisującą procent odpowiedzi wyrażających zgadzanie się z zawartym w pytaniu stwierdzeniem (tj. 1 lub 2) **w pytaniach *odwróconych*** z baterii "st87";
+-   `kor_tak`
+-   `irv_ja` opisującą odchylenie standardowe (kodów) odpowiedzi danego respondenta na pytania z baterii "st87" (porównamy ją ze zmienną obliczoną przez funkcję `irv`).
 
 Weź pod uwagę, że wartości logiczne można w R sumować - wartość `TRUE` jest wtedy traktowana jako 1, a wartość `FALSE` jako 0.
 
@@ -302,9 +302,9 @@ Do tej pory zajmowaliśmy się przekształceniami zmiennych w *ramce danych*, k
 
 W ramach pakietu *dplyr* służy do tego funkcja `group_by()` w połączeniu z `summarise()`:
 
-- `group_by()` pozwala podać zmienne, wg których *ramka danych* ma zostać pogrupowana,
-- `summarise()` używa się w sposób niemal identyczny jak `mutate()`, ale wyrażenia, które dokonują obliczeń w ramach tej funkcji powinny zwracać pojedyncze wartości, jak np. funkcja `sum()`, `mean` itp.
-   - (Ściśle: od wersji 1.0.0 pakietu nie jest wymagane, aby używane wyrażenia zwracały pojedyncze wartości, ale omawianie takich nietypowych przypadków wykracza dalece poza ramy tego warsztatu.)
+-   `group_by()` pozwala podać zmienne, wg których *ramka danych* ma zostać pogrupowana,
+-   `summarise()` używa się w sposób niemal identyczny jak `mutate()`, ale wyrażenia, które dokonują obliczeń w ramach tej funkcji powinny zwracać pojedyncze wartości, jak np. funkcja `sum()`, `mean` itp.
+    -   (Ściśle: od wersji 1.0.0 pakietu nie jest wymagane, aby używane wyrażenia zwracały pojedyncze wartości, ale omawianie takich nietypowych przypadków wykracza dalece poza ramy tego warsztatu.)
 
 Obliczmy więc średnie wartości indeksów w ramach poszczególnych krajów:
 
@@ -340,13 +340,16 @@ przynaleznosc %>%
                    ~mean(., na.rm = TRUE)))
 ```
 
-- przed wywołaniem `across()` **nie** stawiamy nazwy ze znakiem `=` - nie miałoby to sensu, bo nie chcemy utworzyć jednej nowej zmiennej, lecz wiele; nazwy utworzonych zmiennych będą tutaj takie same jak tych, które podlegają agregacji;
-- pierwszy argument `across()` opisuje, jakie zmienne mają zostać przekształcone;
+-   przed wywołaniem `across()` **nie** stawiamy nazwy ze znakiem `=` - nie miałoby to sensu, bo nie chcemy utworzyć jednej nowej zmiennej, lecz wiele; nazwy utworzonych zmiennych będą tutaj takie same jak tych, które podlegają agregacji;
+
+-   pierwszy argument `across()` opisuje, jakie zmienne mają zostać przekształcone;
 
     -   argument ten podaje się podobnie, jak w wywołaniu `select()` z tą różnicą, że jeśli potrzebujemy użyć więcej niż jednego wyrażenia opisującego wybierane zmienne, to musimy otaczyć je wywołaniem `c()` (tak aby mogły zostać przekazane `across()` jako pojedynczy argument);
-- drugi argument opisuje przekształcenie, które ma zostać wykonane (w sposób nieco *abstrakcyjny*); podane tu wyrażenie od używanych wcześniej różni się tym, że:
-  - należy poprzedzić je znakiem `~`;
-  - zamiast nazwy (konkretnej) przekształcanej zmiennej należy wstawić znak `.`.
+
+-   drugi argument opisuje przekształcenie, które ma zostać wykonane (w sposób nieco *abstrakcyjny*); podane tu wyrażenie od używanych wcześniej różni się tym, że:
+
+    -   należy poprzedzić je znakiem `~`;
+    -   zamiast nazwy (konkretnej) przekształcanej zmiennej należy wstawić znak `.`.
 
 Funkcji `across()` można w analogiczny sposób używać również w ramach wywołań `mutate()`, ale nie będziemy tego ćwiczyć na tych warsztatach.
 
@@ -369,9 +372,9 @@ przynaleznosc %>%
 
 W tym przypadku drugi argument `across()` ma bardziej skomplikowaną strukturę:
 
-- poszczególne przekształcenia trzeba zdefiniować jako argumenty w ramach wywołania funkcji `list()` (tj. jako elementy listy);
-- poszczególnym przekształceniom należy nadać nazwy - zostaną one wykorzystane jako przyrostki dopisywane do nazw przekształcanych zmiennych przy tworzeniu nazw zmiennych w wynikowej *ramce danych*;
-  - istnieje możliwość modyfikacji sposobu tworzenia nazw nowo tworzonych zmiennych przy pomocy dodatkowego argumentu `.names` funkcji `across()` - p. dokumentacja tej funkcji.
+-   poszczególne przekształcenia trzeba zdefiniować jako argumenty w ramach wywołania funkcji `list()` (tj. jako elementy listy);
+-   poszczególnym przekształceniom należy nadać nazwy - zostaną one wykorzystane jako przyrostki dopisywane do nazw przekształcanych zmiennych przy tworzeniu nazw zmiennych w wynikowej *ramce danych*;
+    -   istnieje możliwość modyfikacji sposobu tworzenia nazw nowo tworzonych zmiennych przy pomocy dodatkowego argumentu `.names` funkcji `across()` - p. dokumentacja tej funkcji.
 
 ### Zadanie
 
