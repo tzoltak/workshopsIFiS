@@ -1,0 +1,390 @@
+---
+title: "Using logLime"
+author: "Tomasz Żółtak"
+date: "`r Sys.Date()`"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Data and setup
+
+Let's start from installing tha *logLime* package. At the moment it is not at CRAN, so you need to install it from GitHub using package *remotes*:
+
+```{r}
+# install.packages(c("rmarkdown", "tidyr", "dplyr", "ggplot2",
+#                    "gganimate", "gifski", "remotes"))
+remotes::install_github("tzoltak/logLime")
+
+library(logLime)
+library(dplyr, warn.conflicts = FALSE)
+```
+
+Now let's turn to readin the data into R. Here are read survey results (please note that encoding is set to *UTF-8-BOM*)
+
+```{r}
+surveyResults <- read.csv("https://raw.githubusercontent.com/tzoltak/workshopsIFiS/main/2-logLime/tutorial-survey-results.csv",
+                          encoding = "UTF-8-BOM")
+```
+
+Survey results include different types of variables:
+
+```{r}
+names(surveyResults)
+```
+
+Today of our interest will be variable *id* (i.e. respondent's unique identifier) and variables which names start with *log*, that store recorded log-data streams.
+
+As for the moment these *raw* log-data streams look like this:
+
+```{r}
+# First 2000 characters of a single log-data record
+substr(surveyResults$logScreen1[1], 1, 2000)
+# Average length of log-data stream recoded on the first survey screen
+mean(nchar(surveyResults$logScreen1))
+```
+
+# Preprocessing log-data
+
+## Transforming log-data streams into data frames
+
+To transform log-data into analytically useful form, you need to use function `separate_logdata_types()` providing it a data frame containing respondent id along with columns storing recorded log-data streams. Additional argument `questionNamesPrefix` enables to remove a prefix ("log" in our case) from names of columns storing log-data streams while turning them into values of the variable identifying survey screen in the output data.
+
+```{r eval=FALSE}
+logDataSimpler <- separate_logdata_types(surveyResults %>%
+                                           select(id, starts_with("log")),
+                                         questionNamesPrefix = "log")
+```
+
+However, you will get much more useful data, if you provide `separate_logdata_types()` also with information about survey structure, using the `surveyStructure` argument. Often the simplest way to do so is to provide names of files storing exported survey structure using this argument (as below), but you can also read such a file (or files) yourself and provide a resulting data frame using the same argument.
+
+```{r}
+surveyStructurFile <- "https://raw.githubusercontent.com/tzoltak/workshopsIFiS/main/2-logLime/tutorial-survey-structure.txt"
+
+logData <- separate_logdata_types(surveyResults %>%
+                                    select(id, starts_with("log")),
+                                  surveyStructure = surveyStructurFile,
+                                  questionNamesPrefix = "log")
+```
+
+Function `separate_logdata_types()` returns a list of three data frames:
+
+1.  ***systemInfo*** - storing *access-related* paradata regarding each **respondent-screen** (i.e. a single row describes a specific survey screen for a specific respondent):
+
+    ```{r}
+    logData$systemInfo
+    ```
+
+    -   respondent's web browser self-identification string,
+    -   respondent's screen and web browser window width and height,
+    -   data on position and size of a rectangular area spanned by INPUT elements that are used to mark answers in table-format questions,
+        -   this information is useful to standardize cursor moves indicators between different respondents; it may be also used to identify respondents who have been shown nominally table-format questions in a list layout because of to narrow browser window (`inputsWidth` is 0 in list layout),
+    -   *timestamp* of the last recorded event,
+    -   columns identifying some common problems that were diagnosed during preprocessing of log-data:
+        -   `problemsAnyBroken` - whether any log-data regarding a given respondent-screen has been broken - if so, this typically means that problems were encountered during saving log-data stream to Lime Survey database and *actions* element is probably incomplete, with some events not being recorded,
+        -   `problemsLeftBrowser` - whether respondent left browser window (card) while answering a given screen,
+        -   `problemsResized` - whether respondent changed the size of a browser window while answering a given screen,
+        -   `problemsNoPageLoaded` - whether log-data for a given respondent-screen does not contain a *pageLoaded* event (if so, it is most probably because an old version of the JavaScript applet - that not recorded this type of events - was used to collect the log-data),
+        -   `problemsTimeStamps` - whether there is a discontinuity in values of *timestamps* for a given respondent-screen that results in a negative duration of some *mousemove* events (if so, it is most probably because an old version of the JavaScript applet - that used an unreliable method of getting *timestamps* - was used to collect the log-data).
+
+2.  ***inputPositions*** - storing position of INPUT elements that are used to mark answers to questions on the survey screen; this data is useful to draw backgrounds of plots visualizing cursor traces; also, some information included in *systemInfo* were computed using this data.
+
+    ```{r}
+    logData$inputPositions
+    ```
+
+    -   If survey structure files were provided to `separate_logdata_types()` INPUT element are matched with question code, subquestion code (if applies) and answer code, as well as with [question format code](https://manual.limesurvey.org/Question_object_types) (used internally by Lime Survey).
+    -   This data may be used to compute number of questions and *items* on a given respondent-screen by calling `count_number_of_items()`.
+
+3.  ***actions*** - storing *response-related* paradata, i.e. information about actual events triggered by respondent's actions:
+
+    ```{r}
+    logData$actions
+    ```
+
+    -   There are quite many variables in this data frame but some of them relate only to specific types of events.
+        -   See [*logDataLimeSurvey* applet README](https://github.com/tzoltak/logdataLimeSurvey#actions) for more specific information.
+    -   If survey structure files were provided to `separate_logdata_types()` most events are matched with question code, subquestion code and answer code (if apply).
+    -   *Mousemove* events reported here were already transformed to describe *moves* (i.e. vectors) instead of only cursor positions. Moreover, distance of move is reported in two versions: with and without correction for scrolling.
+
+### Why it is important to provide survey structure?
+
+Providing survey structure information is important, as it enables `separate_logdata_types()` to map actions (events) onto question, subquestion and answer codes of the elements that triggered them.
+
+Below you can see what columns are available with survey structure provided, that are absent if you don't provide it:
+
+```{r}
+setdiff(names(logData$actions), names(logDataSimpler$actions))
+```
+
+**Without these information your ability to compute editing and hovering indices, and even answering speed indices will be considerably limited.**
+
+### Non-standard respondent id
+
+In the calls to `separate_logdata_types()` above there were no indicated which variable(s) in the input data constitute respondent's id. It is possible unless name of respondent's id is one (or more) of the listed below:
+
+-   *id*,
+-   *token*,
+-   *respid*.
+
+Two first are default columns used to identify respondents in data exported from Lime Survey. The last is my personal choice.
+
+If in your data another column is respondent's id, you will need to indicate this in your call to `separate_logdata_types()` by using additional `respId` argument. It works in a [*tidy-selection*](https://dplyr.tidyverse.org/articles/programming.html#tidy-selection) way, so you may give name of the variable unquoted in a call, for example:
+
+```{r eval=FALSE}
+anotherLogData <-
+  separate_logdata_types(anotherSurveyResults,
+                         respId = someAnotherRespondentId,
+                         surveyStructure = anotherSurveyStructurFiles)
+```
+
+Be aware, that **ability to identify respondent's id is necessary for most of the package's functions.** So if you use non-standard variable as respondent's id, you will need to provide it in the same way as above also in calls to another functions of the package.
+
+## Separating *stagnations*
+
+Java Script *mousemove* event reports cursor position but is triggered only by moving a cursor. As a consequence respondent not moving a cursor will be recorded in log-data returned by `separate_logdata_types()` as a (relatively) long-lasting but (probably) rather short-distanced *mousemove*. However, you may want to separate such *actions* into two distinct ones: one representing only a *stagnation* (not-moving) period and another representing actual move (as it already started). You can do so by using function `separate_stagnations()`.
+
+Sadly, this can be done only by dividing *action* on an arbitrarily chosen threshold of duration, i.e. dividing all the *mousemove* events lasting longer than a specified value, assuming that they cover an initial period of *stagnation* followed by the actual move lasting for a duration equal to the chosen threshold. It is reasonable to set this threshold to the value of frequency of collecting *mousemove* events that was used in the Lime Survey log-data collecting applet (typically 100 ms) or perhaps to a little bigger value.
+
+Below we will create a copy of our log-data object and perform separation of *stagnations* on it using a threshold of 120 ms:
+
+```{r}
+logDataStag <- logData
+logDataStag$actions <- separate_stagnations(logDataStag$actions, 120)
+# checking how the number of mousemove actions has changed:
+sum(logData$actions$type %in% "mousemove")
+sum(logDataStag$actions$type %in% "mousemove")
+```
+
+Let's compare the data:
+
+```{r}
+logData$actions %>%
+  filter(type %in% "mousemove", id == 12, screen == "Screen1") %>%
+  slice(1:6) %>%
+  select(id:screen, timeStampRel:type, pageX:pageY, moveX:duration)
+logDataStag$actions %>%
+  filter(type %in% "mousemove", id == 12, screen == "Screen1") %>%
+  slice(1:9) %>%
+  select(id:screen, timeStampRel:type, pageX:pageY, moveX:duration)
+```
+
+Be aware that **separating *stagnations* affects values of computed afterwards cursor move average absolute accelerations!** With *stagnations* separated values of these indices are higher. However, **other cursor indices remain unaffected** by whether *stagnations* were separated or not.
+
+You will need `separate_logdata_types()` if you are interested in computing process indicators like *the longest period of stagnation* - it is not implemented in the package (at least at the moment), but its computation is straightforward after separating *stagnations*.
+
+## Removing problematic data
+
+As it was discussed above *systemInfo* element of a list returned by `separate_logdata_types()` includes some variables that identify common problems found in the processed log-data. The purpose of the `remove_problems()` function is to assist you in deciding whether to keep or to remove this problematic from a given log-data object. For each variable identifying problems it gives you a short description what is this problem about, provides suggestions whether to remove or to keep the problematic records (given what process indicators you are going to compute further), and allows to decide what to do with these records.
+
+```{r}
+logDataClear <- remove_problems(logData)
+```
+
+Be aware that **the problems identified by variables created by `separate_logdata_types()` may not the only ones you should consider!**
+
+### Removing data *manually*
+
+Whether you identified some other type of problem in the data or want to perform further analysis suing only a subgroup of respondents and/or screens, the preferred workflow looks as follows:
+
+-   If you want to analyze only some subset of respondent-screens, for example only respondents who used a mouse as a pointing device:
+
+    1.  Create an object identifying the subgroup you want to analyze:
+
+    ```{r}
+    mouseOnly <- surveyResults %>%
+      filter(Device %in% "Mouse") %>%
+      select(id, Device) # this is not necessary but lowers memory footprint
+    ```
+
+    2.  Perform `semi_join()` with this object on each element of your log-data object:
+
+    ```{r}
+    logDataMouseOnly <- lapply(logData, semi_join, y = mouseOnly, by = "id")
+    ```
+
+-   If you identified some problematic group and want to remove it from the analysis, for example respondents who reported *lags*:
+
+    1.  Create an object identifying problematic records:
+
+    ```{r}
+    lags <- surveyResults %>%
+      filter(Lags == "Yes") %>%
+      select(id, Lags) # this is not necessary but lowers memory footprint
+    ```
+
+    2.  Perform `anti_join()` with this object on each element of your log-data object:
+
+    ```{r}
+    logDataPassOnly <- lapply(logData, anti_join, y = lags, by = "id")
+    ```
+
+You may identify subgroups/problems also on the screen or respondent-screen level - then you should simply accordingly modify the set of columns you select and provide using the `by` argument.
+
+For example, below we will manually remove some data using information stored in the *systemInfo* element of the `logData` object:
+
+```{r}
+(noProblems <- logData$systemInfo %>%
+   filter(problemsAnyBroken != 1,
+          problemsLeftBrowser != 1,
+          problemsResized != 1,
+          problemsTimeStamps != 1) %>%
+   select(id, screen, starts_with("problems")))
+logData <- lapply(logData, semi_join, y = noProblems, by = c("id", "screen"))
+```
+
+## Other log-data transforming functions
+
+There are two other functions included in the package that perform some transformation of log-data in order to prepare it for further analysis:
+
+-   `compute_relative_positions()` - it enhances data on *actions* (events), specyfically *mosemoves* and *clicks*, by computing positions and move distances *relative* to the position of a given survey screen (extremely located) form INPUT elements. Positions and distances recalculated this way are more comparable between respodnents with different browser window sizes. See section on cursor moves indices for examples of using this function.
+-   `compute_cursor_positions()` - it enables to compute cursor position at evenly spaced time points. Data in this form are necessary for example to prepare heat-map graphs illustrating amount of time spent by respondent over the different regions of the survey screen. Example of using this function you will find in the vignette regarding drawing graphs using log-data.
+
+# Storing log-data objects
+
+Log-data objects are large and potentially very large. To assure efficient storage and analysis, please consider the following solutions:
+
+-   Filter out and keep only these types of *actions* (events) you are interested in. Especially if you are not interested in cursor moves or hovering, removing *mousemove* or *mouseover* and *mouseout* events will greatly reduce the amount of data.
+-   Do not store results in CSV files. Use either .RData format (it enables to store log-data list as a single object) or Apache Arrow's [*feather*](https://arrow.apache.org/docs/python/feather.html) or [*parquet*](https://parquet.apache.org/docs/) format to save the space and speed up reading the data.
+
+# Computing process indicators
+
+Having log-data prepared in the previous section using package's functions to compute process indicators is straightforward. In most functions you will provide *actions* element of a log-data object as the first argument.
+
+| Type of process indicators | Functions                        | Types of events used                  |
+|--------------------|------------------------|----------------------------|
+| Response editing           | `compute_editing()`              | *change*                              |
+| Hovering time              | `compute_hovering()`             | *mouseover*, *mouseout*               |
+| Answering time             | `compute_aat()`, `compute_aht()` | *change* or (*mouseover*, *mouseout*) |
+| Cursor moves               | `compute_cursor_indices()`       | *mousemove*                           |
+
+: Functions computing process indicators implemented in the package *logLime*
+
+## Response editing
+
+Use function `compute_editing()` to compute number of response edits:
+
+```{r}
+(edits <- compute_editing(logData$actions))
+```
+
+If you prefer to get results in a *wide* format with only one row for each respondent, you should use `returnFormat = "wide"` argument (be aware that because both survey screen and question code are used to construct column names, in one-question-per-screen survey designs column names may look somewhat redundant).
+
+```{r}
+compute_editing(logData$actions, returnFormat = "wide")
+```
+
+Please note, that marking answer for the first times is also counted as *edit* by `compute_editing()`, so **changes of respondent's answer is indicated by number of reported edits greater than 1**.
+
+Also, be aware that computing number of edits is possible only if you have provided survey structure files while constructing log-data object using `separate_logdata_types()` (and consequently if there are columns *questionCode* and *subquestionCode* available in your *actions*).
+
+## Hovering time
+
+Hovering indices describe how much time has the cursor spent over specific elements of a given survey screen. If only *questionCode*, *subquestionCode* and *answerCode* columns are available in the input data, they will be used to define the structure of the returned data frame.
+
+Please note, that computing hovering time is lengthy. By default function shows a progress bar, but to avoid mess in a static output of this vignette, argument `showPB=FALSE` is set in the call below.
+
+```{r}
+(hovering <- compute_hovering(logData$actions, showPB = FALSE))
+```
+
+Hovering times are reported in seconds.
+
+Results returned by `compute_hovering()` will be typically used for further transformations - most notably for an aggregation. Please note, that if you are interested in the results computed on the *higher level* of aggregation, you may get them directly from `compute_hovering()` by removing some columns from the input data. For example if you are interested only in total time spent over different type of the survey interface elements, you may exclude columns *questionCode*, *subquestionCode* and *answerCode* from the input data:
+
+```{r}
+compute_hovering(select(logData$actions,
+                        -c(questionCode, subquestionCode, answerCode)),
+                 showPB = FALSE)
+```
+
+In case of hovering there is no possibility to get results in a *wide* format - if you want it, you must pivot the results by yourself.
+
+## Answering time
+
+### Indices computed using changes
+
+Several indices describing respondent's answering speed can be computed by calling function `compute_aat()` (aat stands for the average answering time):
+
+```{r}
+(answeringTime <- compute_aat(logData$actions))
+```
+
+Indices differ with respect to whether they:
+
+-   Include all the time spent on the survey screen - *pageTimeIndex*, *pageTimeIndexAll*;
+-   Estimate only the time spent on answering the *items*, ruling out time spent on reading the question stem - *averageAnsweringTime*, *averageAnsweringTimeAll*;
+    -   The idea of the index is illustrated on the [Ulf Kröhne's website](https://kroehne.github.io/aat/).
+
+and also with respect to whether they:
+
+-   Include only the *items* (subquestions) that were answered by a respondent (ignoring those that were omitted without giving an answer) - *pageTimeIndex*, *averageAnsweringTime*;
+-   Include all the *items* (subquestions), irrespective they were answered or not - *pageTimeIndexAll*, *averageAnsweringTimeAll*.
+    -   Please note, that by default number of all the *items* (subquestions) is estimated from the input data, what means that if all the respondents omitted some *item* it won't be taken into account. To solve this problem you may use additional argument `numberOfItems` providing it results of a call to `count_number_of_items(logData$inputPositions)`.
+
+By default if there were several questions on the same survey screen, `NA` are returned as values of the aforementioned indices (that is because they were designed for tabular-format questions). If you want to change this behavior and get values of indices also for screens containing several questions, you should set argument `multipleQuestionsAction="keep"` (compare values in the 6th row of the results with the call above):
+
+```{r}
+(answeringTime <- compute_aat(logData$actions, multipleQuestionsAction = "keep"))
+```
+
+To get results in a *wide* format with only one row for each respondent, you may use `returnFormat="wide"` argument:
+
+```{r}
+compute_aat(logData$actions, returnFormat = "wide")
+```
+
+### Indices compute using hovering times
+
+Alternatively, indices describing answering speed can be computed using previously prepared data on hovering times:
+
+```{r}
+(answeringTimeHover <- compute_aht(hovering))
+```
+
+This function returns alternative estimate of the *pageTimeIndexAll* along with the indicator *averageHoverTimeAll* reporting average time of mouse cursor hovering over a single *item* (either over content or answers), taking into account all the *items* on a given survey screen irrespective they were answered or omitted. Also, survey screen (*totalTime*) is returned.
+
+As in the case of `compute_aat()` you may use arguments `multipleQuestionsAction = "keep")` and `returnFormat = "wide"` while calling `compute_aht()`:
+
+```{r}
+compute_aht(hovering, multipleQuestionsAction = "keep")
+compute_aht(hovering, returnFormat = "wide")
+```
+
+## Cursor moves indices
+
+To compute several indices describing the way respondent moves a cursor on a survey screen you may run:
+
+```{r}
+(mouseMoves <- compute_cursor_indices(logData$actions))
+```
+
+There are 4 main types of cursor moves indices:
+
+-   *dX*, *dY* - total distance traveled on horizontal and vertical axis respectively [px];
+-   *vX*, *vY* - average vertical speed on horizontal and vertical axis respectively [px/s];
+-   *aX*, *aY* - average absolute vertical acceleration on horizontal and vertical axis respectively [px/s\^2];
+-   *flipsX*, *flipsY* - number of flips (changing direction of move) on horizontal and vertical axis respectively.
+
+Along with *regular* versions, there are also *scrolling corrected* versions returned:
+
+-   These indices are identified by the suffix \*\_sc\*.
+-   These indices are computed ruling out cursor moves over the survey screen that occurred because of the other actions than moving a pointing device (in particular: because of scrolling - either using mouse wheel, touchpad gestures or scrolling bar - using arrows to scroll the page or using TAB key to switch between survey form INPUT fields).
+
+Moreover, you can get *relative* versions of the indices:
+
+-   Values of this indices are computing by dividing a *regular* and/or *scrolling corrected* ones by the width or height of a rectangle spanned by the most upper-left and the most bottom-right survey form INPUT element's position on a given survey screen. Values of these indices ones are better comparable between respondents with different browser window size.
+
+To get also this versions, you need to call `compute_relative_positions()` on the *actions* element (you need to provide also the *systemInfo* element of a log-data object as the second argument) before passing it into `compute_cursor_indices()`:
+
+```{r}
+(logData$actions <- compute_relative_positions(logData$actions,
+                                               logData$systemInfo))
+(mouseMoves <- compute_cursor_indices(logData$actions))
+```
+
+Mouse move indices also can be returned in a *wide* format:
+
+```{r}
+compute_cursor_indices(logData$actions, returnFormat = "wide")
+```
