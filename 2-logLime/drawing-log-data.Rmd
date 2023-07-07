@@ -32,7 +32,7 @@ logData <- lapply(logData, semi_join,
                            problemsLeftBrowser != 1,
                            problemsResized != 1,
                            problemsTimeStamps != 1),
-                  by = c("id", "screen"))
+                  by = c("respid", "screen"))
 # computing relative positions and distances
 logData$actions <- compute_relative_positions(logData$actions,
                                               logData$systemInfo)
